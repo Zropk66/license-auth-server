@@ -149,6 +149,7 @@ export async function POST(req: NextRequest) {
             status: resolvedStatus,
             licenseType,
             duration: isDuration ? duration! : null,
+            activatedAt: isDuration ? null : new Date(),
             createdById: authResult.payload.id,
           },
           include: licenseInclude,

@@ -30,6 +30,7 @@ type Session = {
   ipAddress: string | null;
   lastHeartbeat: string;
   status: string;
+  terminatedAt: string | null;
   createdAt: string;
 };
 
@@ -42,11 +43,19 @@ export default function SessionsTable() {
   const [isKicking, setIsKicking] = useState(false);
 
   useEffect(() => {
-    fetchSessions();
+    // 首次加载展示 loading 状态
+    fetchSessions(true);
+
+    // 每 5 秒自动静默更新数据，表格不闪烁
+    const timer = setInterval(() => {
+      fetchSessions(false);
+    }, 5000);
+
+    return () => clearInterval(timer);
   }, []);
 
-  const fetchSessions = async () => {
-    setLoading(true);
+  const fetchSessions = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const response = await fetch('/api/admin/sessions');
       const data = await response.json();
@@ -64,7 +73,7 @@ export default function SessionsTable() {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -116,7 +125,27 @@ export default function SessionsTable() {
     }
   };
 
-  const getSessionStatus = (lastHeartbeatStr: string) => {
+  const formatOnlineDuration = (startStr: string, endStr: string | null, lastHbStr: string, isActive: boolean) => {
+    try {
+      const start = new Date(startStr).getTime();
+      const end = endStr ? new Date(endStr).getTime() : (isActive ? new Date().getTime() : new Date(lastHbStr).getTime());
+      const diffMs = Math.max(0, end - start);
+
+      const totalMinutes = Math.round(diffMs / (1000 * 60));
+      return `${totalMinutes}分钟`;
+    } catch (e) {
+      return '-';
+    }
+  };
+
+  const getSessionStatus = (lastHeartbeatStr: string, dbStatus: string) => {
+    if (dbStatus !== 'active') {
+      return {
+        label: '已下线',
+        dotColor: 'bg-red-500',
+        badgeClass: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-200'
+      };
+    }
     try {
       const now = new Date().getTime();
       const last = new Date(lastHeartbeatStr).getTime();
@@ -205,28 +234,34 @@ export default function SessionsTable() {
                   <TableHead>IP 地址</TableHead>
                   <TableHead>硬件 ID</TableHead>
                   <TableHead>会话状态</TableHead>
-                  <TableHead>最后心跳时间</TableHead>
+                  <TableHead>登录时间</TableHead>
+                  <TableHead>下线时间</TableHead>
+                  <TableHead>最后心跳</TableHead>
+                  <TableHead>总在线时长</TableHead>
                   <TableHead className="w-[100px]">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
+                {loading && sessions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center h-24">
+                    <TableCell colSpan={12} className="text-center h-24">
                       <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                      <p className="text-sm text-muted-foreground mt-2">正在加载在线会话...</p>
+                      <p className="text-sm text-muted-foreground mt-2">正在加载会话...</p>
                     </TableCell>
                   </TableRow>
                 ) : filteredSessions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center h-24">
+                    <TableCell colSpan={12} className="text-center h-24">
                       <Activity className="h-8 w-8 mx-auto text-muted-foreground animate-pulse" />
-                      <p className="text-muted-foreground mt-2">当前无在线活动会话</p>
+                      <p className="text-muted-foreground mt-2">当前无会话记录</p>
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredSessions.map((session) => {
-                    const statusInfo = getSessionStatus(session.lastHeartbeat);
+                    const statusInfo = getSessionStatus(session.lastHeartbeat, session.status);
+                    const isSessionActive = statusInfo.label === '活跃' || statusInfo.label === '延迟' || statusInfo.label === '警告';
+                    const durationStr = formatOnlineDuration(session.createdAt, session.terminatedAt, session.lastHeartbeat, isSessionActive);
+
                     return (
                       <TableRow key={session.id}>
                         <TableCell className="font-mono text-xs max-w-[100px] truncate" title={session.id}>
@@ -247,47 +282,52 @@ export default function SessionsTable() {
                             {statusInfo.label}
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-xs">{formatDateTime(session.createdAt)}</TableCell>
+                        <TableCell className="text-xs">{session.terminatedAt ? formatDateTime(session.terminatedAt) : (isSessionActive ? '-' : formatDateTime(session.lastHeartbeat))}</TableCell>
                         <TableCell className="text-xs">{formatDateTime(session.lastHeartbeat)}</TableCell>
+                        <TableCell className="text-xs font-medium">{durationStr}</TableCell>
                         <TableCell>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive hover:bg-destructive/10"
-                              onClick={() => setSessionToKick(session)}
-                            >
-                              <ShieldAlert className="h-4 w-4 mr-1" />
-                              下线
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>强制会话下线</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                您确定要强制下线用户 <span className="font-semibold">{session.username}</span> 在软件 <span className="font-semibold">{session.softwareName}</span> 上的会话吗？
-                                强制下线后，客户端的下一次心跳或验证请求将会失败，需要重新进行授权验证。
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>取消</AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                onClick={kickSession}
-                                disabled={isKicking}
+                        {isSessionActive && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:bg-destructive/10 h-8"
+                                onClick={() => setSessionToKick(session)}
                               >
-                                {isKicking ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    正在下线...
-                                  </>
-                                ) : (
-                                  '强制下线'
-                                )}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                                <ShieldAlert className="h-4 w-4 mr-1" />
+                                下线
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>强制会话下线</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  您确定要强制下线用户 <span className="font-semibold">{session.username}</span> 在软件 <span className="font-semibold">{session.softwareName}</span> 上的会话吗？
+                                  强制下线后，客户端的下一次心跳或验证请求将会失败，需要重新进行授权验证。
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={kickSession}
+                                  disabled={isKicking}
+                                >
+                                  {isKicking ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      正在下线...
+                                    </>
+                                  ) : (
+                                    '强制下线'
+                                  )}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </TableCell>
                     </TableRow>
                     );

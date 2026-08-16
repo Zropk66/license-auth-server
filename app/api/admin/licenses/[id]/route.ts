@@ -139,7 +139,12 @@ export async function PATCH(
     // 处理状态更新
     if (updateData.status !== undefined) {
       if (updateData.status === 'active' && license.activatedAt === null && license.licenseType === 'duration') {
-        dataToUpdate.status = 'unactivated';
+        // 如果是时长激活卡且从未激活过，在后台手动激活时直接计算当前过期时间
+        dataToUpdate.status = 'active';
+        dataToUpdate.activatedAt = new Date();
+        if (license.duration) {
+          dataToUpdate.expirationDate = new Date(Date.now() + license.duration * 60 * 1000);
+        }
       } else {
         dataToUpdate.status = updateData.status;
       }

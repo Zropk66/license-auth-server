@@ -19,11 +19,28 @@ export async function GET(req: NextRequest) {
       where: { key: 'session_timeout' },
     });
     const sessionTimeoutSeconds = timeoutSetting ? parseInt(timeoutSetting.value, 10) : 300;
-    const timeoutAgo = new Date(Date.now() - sessionTimeoutSeconds * 1000);
+    const activeTimeoutAgo = new Date(Date.now() - sessionTimeoutSeconds * 1000);
+    const offlineGraceAgo = new Date(Date.now() - (sessionTimeoutSeconds + 60) * 1000);
+    const terminatedGraceAgo = new Date(Date.now() - 60 * 1000);
 
     const where = {
-      lastHeartbeat: { gte: timeoutAgo },
-      status: 'active',
+      OR: [
+        {
+          status: 'active',
+          lastHeartbeat: { gte: activeTimeoutAgo },
+        },
+        {
+          status: 'active',
+          lastHeartbeat: {
+            lt: activeTimeoutAgo,
+            gte: offlineGraceAgo,
+          },
+        },
+        {
+          status: 'terminated',
+          terminatedAt: { gte: terminatedGraceAgo },
+        },
+      ],
     };
 
     // 未提供 page 参数时返回全部数据（数组格式），保持前端兼容
@@ -42,7 +59,7 @@ export async function GET(req: NextRequest) {
           },
         },
         orderBy: {
-          lastHeartbeat: 'desc',
+          createdAt: 'desc', // 按创建时间降序
         },
       });
 
@@ -56,6 +73,7 @@ export async function GET(req: NextRequest) {
           ipAddress: session.ipAddress,
           lastHeartbeat: session.lastHeartbeat,
           status: session.status,
+          terminatedAt: session.terminatedAt,
           createdAt: session.createdAt,
         }))
       );
@@ -89,7 +107,7 @@ export async function GET(req: NextRequest) {
           },
         },
         orderBy: {
-          lastHeartbeat: 'desc',
+          createdAt: 'desc',
         },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -107,6 +125,7 @@ export async function GET(req: NextRequest) {
         ipAddress: session.ipAddress,
         lastHeartbeat: session.lastHeartbeat,
         status: session.status,
+        terminatedAt: session.terminatedAt,
         createdAt: session.createdAt,
       })),
       total,
@@ -160,10 +179,13 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // 软终止：将状态设为 terminated 而非物理删除
+    // 软终止：将状态设为 terminated 而非物理删除，并写入终止下线时间
     await prisma.session.update({
       where: { id: sessionId },
-      data: { status: 'terminated' },
+      data: {
+        status: 'terminated',
+        terminatedAt: new Date(),
+      },
     });
 
     // 记录审计日志

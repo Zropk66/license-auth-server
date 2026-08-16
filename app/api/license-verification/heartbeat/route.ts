@@ -5,7 +5,6 @@ import { checkHeartbeatRateLimit, getClientIP } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
-    // 速率限制：防止心跳滥用
     const ip = getClientIP(req);
     const rateLimit = checkHeartbeatRateLimit(ip);
     if (!rateLimit.allowed) {
@@ -24,7 +23,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 解密数据
     let decryptedData: any;
     try {
       decryptedData = decryptData(encryptedData);
@@ -44,7 +42,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 查找许可证，检查是否有效/过期/撤销
     const license = await prisma.license.findUnique({
       where: {
         licenseKey,
@@ -101,29 +98,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 查找会话
-    let session;
-    if (sessionId) {
-      session = await prisma.session.findUnique({
-        where: {
-          id: sessionId,
-        },
-      });
-    } else {
-      // 如果未提供 sessionId，尝试通过 licenseKey 和 hardwareId 查找活跃会话
-      session = await prisma.session.findFirst({
-        where: {
-          licenseKey,
-          hardwareId: hardwareId || null,
-        },
-      });
-    }
+    const session = await prisma.session.findFirst({
+      where: {
+        id: sessionId || undefined,
+        licenseKey,
+        hardwareId: hardwareId || null,
+      },
+    });
 
     if (!session) {
       return encryptedResponse(
         {
           error: 'Session not found. Please re-verify.',
-          message: '您的客户端连接会话已被管理员强制清除下线。'
+          message: '您的客户端连接会话失效或参数不匹配。'
         },
         401
       );
@@ -139,26 +126,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 获取心跳间隔设置
     const heartbeatSetting = await prisma.setting.findUnique({
       where: { key: 'heartbeat_interval' },
     });
     const heartbeatInterval = heartbeatSetting ? parseInt(heartbeatSetting.value, 10) : 30;
 
-    // 对于 duration 类型许可证，补偿离线空闲时间到过期日期
-    // 使用事务包裹读取+更新，避免竞态条件
     if (license.licenseType === 'duration') {
       const now = new Date();
       const lastHeartbeatTime = new Date(session.lastHeartbeat).getTime();
       const elapsedMs = now.getTime() - lastHeartbeatTime;
       const expectedIntervalMs = heartbeatInterval * 1000;
 
-      // 如果经过的时间明显长于预期的心跳间隔（例如 1.5 倍），
-      // 则将多余的空闲离线时间补偿到过期日期，使离线时间不被扣除
       if (elapsedMs > expectedIntervalMs * 1.5) {
         const idleMs = elapsedMs - expectedIntervalMs;
 
-        // 使用原子条件更新：只在当前过期日期匹配时才更新，避免并发覆盖
         await prisma.$transaction(async (tx) => {
           const currentLicense = await tx.license.findUnique({
             where: { id: license.id },
@@ -177,7 +158,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 更新最后心跳时间
     const updatedSession = await prisma.session.update({
       where: {
         id: session.id,

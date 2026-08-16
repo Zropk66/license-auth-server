@@ -34,17 +34,24 @@ export async function PATCH(req: NextRequest) {
       auditAction = 'resume_license';
     }
 
-    // Perform batch update
+    const updateWhere: any = {
+      id: { in: ids },
+    };
+
+    if (action === 'active') {
+      updateWhere.NOT = {
+        status: 'unactivated',
+        licenseType: 'duration',
+      };
+    }
+
     await prisma.license.updateMany({
-      where: {
-        id: { in: ids },
-      },
+      where: updateWhere,
       data: {
         status: statusToSet,
       },
     });
 
-    // Write audit log for batch operation
     await logAction({
       adminId: authResult.payload.id,
       action: `batch_${auditAction}`,

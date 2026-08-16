@@ -46,6 +46,7 @@ interface LicenseDetails {
     hardwareId: string | null;
     lastHeartbeat: string;
     status: string;
+    terminatedAt?: string | null;
     createdAt: string;
   }[];
 }
@@ -59,15 +60,21 @@ export default function LicenseDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isRevoking, setIsRevoking] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
+  const [isActivating, setIsActivating] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [kickingSessionId, setKickingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchLicenseDetails();
+    fetchLicenseDetails(true);
+    const timer = setInterval(() => {
+      fetchLicenseDetails(false);
+    }, 5000);
+
+    return () => clearInterval(timer);
   }, [params.id]);
-  
-  const fetchLicenseDetails = async () => {
-    setLoading(true);
+
+  const fetchLicenseDetails = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const response = await fetch(`/api/admin/licenses/${params.id}`);
 
@@ -81,7 +88,7 @@ export default function LicenseDetailsPage() {
       console.error('Error fetching license details:', err);
       setError('加载授权详情失败。请稍后再试。');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -93,7 +100,66 @@ export default function LicenseDetailsPage() {
     });
   };
 
+  const getSessionStatus = (lastHeartbeatStr: string, dbStatus: string) => {
+    if (dbStatus !== 'active') {
+      return {
+        label: '已下线',
+        badgeClass: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-200'
+      };
+    }
+    try {
+      const now = new Date().getTime();
+      const last = new Date(lastHeartbeatStr).getTime();
+      const diffSeconds = Math.max(0, Math.floor((now - last) / 1000));
+
+      if (diffSeconds <= 45) {
+        return {
+          label: '活跃',
+          badgeClass: 'bg-green-500/10 text-green-700 dark:text-green-400 border-green-200'
+        };
+      } else if (diffSeconds <= 90) {
+        return {
+          label: '延迟',
+          badgeClass: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border-yellow-200'
+        };
+      } else if (diffSeconds <= 300) {
+        return {
+          label: '警告',
+          badgeClass: 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-200'
+        };
+      } else {
+        return {
+          label: '离线',
+          badgeClass: 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-200'
+        };
+      }
+    } catch (e) {
+      return {
+        label: '未知',
+        badgeClass: 'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-200'
+      };
+    }
+  };
+
+  const formatOnlineDuration = (startStr: string, endStr: string | null | undefined, lastHbStr: string, isActive: boolean) => {
+    try {
+      const start = new Date(startStr).getTime();
+      const end = endStr ? new Date(endStr).getTime() : (isActive ? new Date().getTime() : new Date(lastHbStr).getTime());
+      const diffMs = Math.max(0, end - start);
+
+      const totalMinutes = Math.round(diffMs / (1000 * 60));
+      return `${totalMinutes}分钟`;
+    } catch (e) {
+      return '-';
+    }
+  };
+
   const formatDuration = (minutes?: number | null) => {
+    if (minutes === undefined || minutes === null) return '-';
+    return `${minutes}分钟`;
+  };
+
+  const formatLicenseDuration = (minutes?: number | null) => {
     if (minutes === undefined || minutes === null) return '-';
     if (minutes === 0) return '0分钟';
     if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}天`;
@@ -114,26 +180,37 @@ export default function LicenseDetailsPage() {
     let totalMins = 0;
     let usedMins = 0;
 
+    // 计算总时长
     if (license.licenseType === 'duration') {
       totalMins = license.duration || 0;
-      if (!license.activatedAt) {
-        usedMins = 0;
-      } else {
-        const remainingMs = expiry.getTime() - now.getTime();
-        const remainingMins = Math.max(0, Math.round(remainingMs / (1000 * 60)));
-        usedMins = Math.max(0, totalMins - remainingMins);
-      }
     } else {
       const totalMs = expiry.getTime() - created.getTime();
       totalMins = Math.max(0, Math.round(totalMs / (1000 * 60)));
-      if (now < created) {
-        usedMins = 0;
-      } else if (now > expiry) {
-        usedMins = totalMins;
-      } else {
-        const usedMs = now.getTime() - created.getTime();
-        usedMins = Math.max(0, Math.round(usedMs / (1000 * 60)));
-      }
+    }
+
+    // 通过累加所有在线会话的历史时长来计算真实的已使用时长
+    if (license.sessions && license.sessions.length > 0) {
+      let totalUsedMs = 0;
+      license.sessions.forEach(session => {
+        const sessionStart = new Date(session.createdAt).getTime();
+
+        // 判定会话是否活跃（和列表中一致的动态判断）
+        const lastHb = new Date(session.lastHeartbeat).getTime();
+        const diffSeconds = Math.max(0, Math.floor((now.getTime() - lastHb) / 1000));
+        const isSessionActive = session.status === 'active' && diffSeconds <= 300;
+
+        const sessionEnd = session.terminatedAt
+          ? new Date(session.terminatedAt).getTime()
+          : (isSessionActive ? now.getTime() : lastHb);
+
+        totalUsedMs += Math.max(0, sessionEnd - sessionStart);
+      });
+      usedMins = Math.round(totalUsedMs / (1000 * 60));
+    }
+
+    // 若计算出的已用时间超出总时间（由于取整误差），进行约束
+    if (license.licenseType === 'duration') {
+      usedMins = Math.min(totalMins, usedMins);
     }
 
     return {
@@ -218,6 +295,44 @@ export default function LicenseDetailsPage() {
       });
     } finally {
       setIsSuspending(false);
+    }
+  };
+
+  const handleActivateLicense = async () => {
+    if (!license) return;
+
+    setIsActivating(true);
+    try {
+      const response = await fetch(`/api/admin/licenses/${license.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'active',
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '激活授权失败');
+      }
+
+      toast({
+        title: '授权已激活',
+        description: '该卡密已成功手动激活，开始计算有效时长。',
+      });
+
+      setLicense(result);
+    } catch (error) {
+      toast({
+        title: '错误',
+        description: error instanceof Error ? error.message : '激活授权失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsActivating(false);
     }
   };
 
@@ -364,7 +479,7 @@ export default function LicenseDetailsPage() {
                     <p>
                       {license?.licenseType === 'duration' ? (
                         <span className="text-yellow-600 font-medium">
-                          激活卡 ({formatDuration(license.duration)})
+                          激活卡 ({formatLicenseDuration(license.duration)})
                         </span>
                       ) : (
                         '即时卡'
@@ -528,7 +643,24 @@ export default function LicenseDetailsPage() {
               </div>
 
               <div className="flex gap-2">
-                {license?.status !== "revoked" && (
+                {license?.status === "unactivated" && (
+                  <Button
+                    onClick={handleActivateLicense}
+                    disabled={isActivating}
+                    className="bg-green-600 hover:bg-green-700 text-white border-none"
+                  >
+                    {isActivating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        正在激活...
+                      </>
+                    ) : (
+                      '激活授权'
+                    )}
+                  </Button>
+                )}
+
+                {license?.status !== "revoked" && license?.status !== "unactivated" && (
                   <Button
                     onClick={toggleSuspend}
                     disabled={isSuspending}
@@ -591,8 +723,8 @@ export default function LicenseDetailsPage() {
           {license?.sessions && license.sessions.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl">在线会话</CardTitle>
-                <CardDescription>当前与该授权关联的活跃 session</CardDescription>
+                <CardTitle className="text-xl">会话历史与活跃 Session</CardTitle>
+                <CardDescription>当前与该授权关联的全部会话历史记录</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
@@ -601,42 +733,52 @@ export default function LicenseDetailsPage() {
                       <tr className="border-b bg-muted/50">
                         <th className="px-4 py-2 text-left font-medium">IP 地址</th>
                         <th className="px-4 py-2 text-left font-medium">硬件 ID</th>
+                        <th className="px-4 py-2 text-left font-medium">登录时间</th>
+                        <th className="px-4 py-2 text-left font-medium">下线时间</th>
+                        <th className="px-4 py-2 text-left font-medium">总在线时长</th>
                         <th className="px-4 py-2 text-left font-medium">最后心跳</th>
                         <th className="px-4 py-2 text-left font-medium">状态</th>
                         <th className="px-4 py-2 text-left font-medium w-[80px]">操作</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {license?.sessions?.map((session) => (
-                        <tr key={session.id} className="border-b last:border-0">
-                          <td className="px-4 py-2 font-mono text-xs">{session.ipAddress || '-'}</td>
-                          <td className="px-4 py-2 font-mono text-xs truncate max-w-[120px]">{session.hardwareId || '-'}</td>
-                          <td className="px-4 py-2 text-xs">{formatDate(session.lastHeartbeat)}</td>
-                          <td className="px-4 py-2">
-                            <Badge variant={session.status === 'active' ? 'default' : 'secondary'}>
-                              {session.status === 'active' ? '在线' : '已下线'}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-2">
-                            {session.status === 'active' && (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                className="h-7 text-xs"
-                                disabled={kickingSessionId === session.id}
-                                onClick={() => kickSession(session.id)}
-                              >
-                                {kickingSessionId === session.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  '踢出'
-                                )}
-                              </Button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
+	                    <tbody>
+	                      {license?.sessions?.map((session) => {
+	                        const statusInfo = getSessionStatus(session.lastHeartbeat, session.status);
+	                        const isSessionActive = statusInfo.label === '活跃' || statusInfo.label === '延迟' || statusInfo.label === '警告';
+	                        return (
+	                          <tr key={session.id} className="border-b last:border-0">
+	                            <td className="px-4 py-2 font-mono text-xs">{session.ipAddress || '-'}</td>
+	                            <td className="px-4 py-2 font-mono text-xs truncate max-w-[120px]">{session.hardwareId || '-'}</td>
+	                            <td className="px-4 py-2 text-xs">{formatDate(session.createdAt)}</td>
+	                            <td className="px-4 py-2 text-xs">{session.terminatedAt ? formatDate(session.terminatedAt) : (isSessionActive ? '-' : formatDate(session.lastHeartbeat))}</td>
+	                            <td className="px-4 py-2 text-xs">{formatOnlineDuration(session.createdAt, session.terminatedAt, session.lastHeartbeat, isSessionActive)}</td>
+		                            <td className="px-4 py-2 text-xs">{formatDate(session.lastHeartbeat)}</td>
+	                            <td className="px-4 py-2">
+	                              <Badge variant="outline" className={`${statusInfo.badgeClass} px-2 py-0.5 font-medium text-xs`}>
+	                                {statusInfo.label}
+	                              </Badge>
+	                            </td>
+	                            <td className="px-4 py-2">
+	                              {isSessionActive && (
+	                                <Button
+	                                  variant="destructive"
+	                                  size="sm"
+	                                  className="h-7 text-xs"
+	                                  disabled={kickingSessionId === session.id}
+	                                  onClick={() => kickSession(session.id)}
+	                                >
+	                                  {kickingSessionId === session.id ? (
+	                                    <Loader2 className="h-3 w-3 animate-spin" />
+	                                  ) : (
+	                                    '踢出'
+	                                  )}
+	                                </Button>
+	                              )}
+	                            </td>
+	                          </tr>
+	                        );
+	                      })}
+	                    </tbody>
                   </table>
                 </div>
               </CardContent>

@@ -259,39 +259,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 创建或更新会话
-    // 由于 hardwareId 可能为 null，且 schema 中无 @@unique([licenseKey, hardwareId])，
-    // 使用事务包裹 findFirst + create/update 以避免竞态条件
+    // 创建新会话（保留所有历史会话）
+    // 在创建新会话前，先将该密钥及设备下的所有处于 active 状态 of 旧会话标记为 terminated，并以其最后活跃心跳时间作为下线时间
     const session = await prisma.$transaction(async (tx) => {
-      const existingSession = await tx.session.findFirst({
+      // 找出当前所有处于活跃状态的旧会话
+      const activeOldSessions = await tx.session.findMany({
         where: {
           licenseKey,
           hardwareId: hardwareId || null,
+          status: 'active',
         },
       });
 
-      if (existingSession) {
-        return tx.session.update({
-          where: {
-            id: existingSession.id,
-          },
+      // 逐个更新它们的终止时间和状态
+      for (const oldSession of activeOldSessions) {
+        await tx.session.update({
+          where: { id: oldSession.id },
           data: {
-            ipAddress,
-            lastHeartbeat: new Date(),
-            status: 'active',
-          },
-        });
-      } else {
-        return tx.session.create({
-          data: {
-            licenseKey,
-            hardwareId: hardwareId || null,
-            ipAddress,
-            status: 'active',
-            lastHeartbeat: new Date(),
+            status: 'terminated',
+            terminatedAt: oldSession.lastHeartbeat, // 最后一次心跳视为其下线时间
           },
         });
       }
+
+      // 创建全新的会话记录
+      return tx.session.create({
+        data: {
+          licenseKey,
+          hardwareId: hardwareId || null,
+          ipAddress,
+          status: 'active',
+          lastHeartbeat: new Date(),
+        },
+      });
     });
 
     // 获取心跳间隔设置

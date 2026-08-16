@@ -51,7 +51,7 @@ export default function DashboardStats() {
       try {
         const response = await fetch('/api/admin/dashboard/stats');
         const data = await response.json();
-        
+
         if (response.ok) {
           setStats(data);
         }
@@ -63,6 +63,12 @@ export default function DashboardStats() {
     };
 
     fetchStats();
+
+    const timer = setInterval(() => {
+      fetchStats();
+    }, 10000);
+
+    return () => clearInterval(timer);
   }, []);
 
   if (isLoading) {

@@ -73,11 +73,12 @@ model Session {
   ipAddress     String?
   lastHeartbeat DateTime @default(now())
   status        String   @default("active")
+  terminatedAt  DateTime? // 终止下线时间
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([licenseKey, hardwareId])
   @@index([licenseKey])
+  @@index([licenseKey, hardwareId])
   @@index([status, lastHeartbeat])
   @@index([ipAddress])
 }
