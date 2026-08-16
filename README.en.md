@@ -68,9 +68,9 @@ This system features separate **Admin Management Portal** and **User Self-Servic
     ```
 
 3.  **Setup Environment Variables**:
-    Copy `.env.example` to `.env` and configure the following variables:
+    Copy `.env.example` to `.env` and configure your database and secrets:
     ```env
-    # Database URL (for local development)
+    # [Local Development Environment] Database URL (for local development, e.g., local PostgreSQL or SQL Server)
     DATABASE_URL="postgresql://license_auth:your-password@localhost:5432/license_auth"
 
     # JWT Authentication Secret (minimum 16 characters)
@@ -108,6 +108,7 @@ The project is fully containerized, allowing you to run both the Web app and Pos
 2.  **Configure Environment Variables**:
     Copy `.env.example` to `.env` and fill in your secrets:
     ```env
+    # [Docker Deployment Environment] Parameters for Docker Compose internal database service (no need to change DATABASE_URL)
     POSTGRES_USER=license_auth
     POSTGRES_PASSWORD=your-secure-password
     POSTGRES_DB=license_auth
@@ -115,7 +116,7 @@ The project is fully containerized, allowing you to run both the Web app and Pos
     JWT_SECRET="your-jwt-secret-min-16-chars"
     AES_SECRET_KEY="your-aes-secret-key"
     ```
-    Docker Compose automatically constructs `DATABASE_URL` from these variables to connect to the internal `db` service.
+    Docker Compose automatically configures and connects to the internal newly-created `db` (PostgreSQL) service using these variables. You don't need to manually configure `DATABASE_URL`.
 
 3.  **(Optional) Set up first-deployment protection**:
     Set `SETUP_TOKEN` in `.env` to require a token when creating the first Owner account, preventing unauthorized takeover:

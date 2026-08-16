@@ -2,9 +2,6 @@
 const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   images: { unoptimized: true },
   async headers() {
     return [

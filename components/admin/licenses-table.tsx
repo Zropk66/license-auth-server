@@ -342,7 +342,7 @@ export default function LicensesTable() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
-                            <span className="text-xs sm:text-sm font-mono truncate max-w-[100px] sm:max-w-[120px]">
+                            <span className="text-xs sm:text-sm font-mono truncate max-w-[100px] sm:max-w-[120px]" title={license.licenseKey}>
                               {license.licenseKey}
                             </span>
                             <Button

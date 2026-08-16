@@ -68,9 +68,9 @@
     ```
 
 3.  **配置环境变量**：
-    复制 `.env.example` 为 `.env`，并填入以下必要参数：
+    复制 `.env.example` 为 `.env`，并在其中配置你的数据库和密钥：
     ```env
-    # 数据库连接地址（本地开发用）
+    # [本地开发环境] 数据库连接地址（本地开发用，如本地 PostgreSQL 或另配的 SQL Server 等）
     DATABASE_URL="postgresql://license_auth:your-password@localhost:5432/license_auth"
 
     # JWT 登录鉴权密钥 (至少 16 字符)
@@ -108,6 +108,7 @@
 2.  **配置环境变量**：
     复制 `.env.example` 为 `.env`，修改其中的密码和密钥为真实值：
     ```env
+    # [Docker 部署环境] 以下参数用于配置 Docker compose 内部 of 数据库服务 (无需修改 DATABASE_URL)
     POSTGRES_USER=license_auth
     POSTGRES_PASSWORD=your-secure-password
     POSTGRES_DB=license_auth
@@ -115,7 +116,7 @@
     JWT_SECRET="your-jwt-secret-min-16-chars"
     AES_SECRET_KEY="your-aes-secret-key"
     ```
-    Docker Compose 会自动从这些变量构造 `DATABASE_URL` 指向内部 `db` 服务。
+    Docker Compose 会自动使用这些变量配置并连接到内部新建的 `db` (PostgreSQL) 服务，无需手动拼装 `DATABASE_URL`。
 
 3.  **（可选）设置首次部署保护**：
     在 `.env` 中设置 `SETUP_TOKEN`，首次创建 Owner 账号时需要提供此令牌，防止被抢注：

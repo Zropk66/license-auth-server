@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Search, RefreshCcw, Activity, ShieldAlert, Sparkles } from 'lucide-react';
+import { Loader2, Search, RefreshCcw, Activity, ShieldAlert } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
@@ -198,6 +198,7 @@ export default function SessionsTable() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>会话 ID</TableHead>
                   <TableHead>用户名</TableHead>
                   <TableHead>授权密钥</TableHead>
                   <TableHead>软件名称</TableHead>
@@ -211,14 +212,14 @@ export default function SessionsTable() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24">
+                    <TableCell colSpan={9} className="text-center h-24">
                       <Loader2 className="h-5 w-5 animate-spin mx-auto" />
                       <p className="text-sm text-muted-foreground mt-2">正在加载在线会话...</p>
                     </TableCell>
                   </TableRow>
                 ) : filteredSessions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center h-24">
+                    <TableCell colSpan={9} className="text-center h-24">
                       <Activity className="h-8 w-8 mx-auto text-muted-foreground animate-pulse" />
                       <p className="text-muted-foreground mt-2">当前无在线活动会话</p>
                     </TableCell>
@@ -228,8 +229,13 @@ export default function SessionsTable() {
                     const statusInfo = getSessionStatus(session.lastHeartbeat);
                     return (
                       <TableRow key={session.id}>
+                        <TableCell className="font-mono text-xs max-w-[100px] truncate" title={session.id}>
+                          {session.id}
+                        </TableCell>
                         <TableCell className="font-medium">{session.username}</TableCell>
-                        <TableCell className="font-mono text-xs">{session.licenseKey}</TableCell>
+                        <TableCell className="font-mono text-xs max-w-[120px] truncate" title={session.licenseKey}>
+                          {session.licenseKey}
+                        </TableCell>
                         <TableCell>{session.softwareName}</TableCell>
                         <TableCell className="font-mono text-xs">{session.ipAddress || '-'}</TableCell>
                         <TableCell className="font-mono text-xs max-w-[120px] truncate" title={session.hardwareId || undefined}>
