@@ -26,6 +26,7 @@ export default function AdminLogin() {
   const [isLoading, setIsLoading] = useState(false);
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const [enableRecaptcha, setEnableRecaptcha] = useState(true);
+  const [recaptchaSiteKey, setRecaptchaSiteKey] = useState('');
 
   useEffect(() => {
     fetch('/api/settings/public')
@@ -33,6 +34,9 @@ export default function AdminLogin() {
       .then((data) => {
         if (data && typeof data.enableRecaptcha === 'boolean') {
           setEnableRecaptcha(data.enableRecaptcha);
+        }
+        if (data && typeof data.recaptchaSiteKey === 'string') {
+          setRecaptchaSiteKey(data.recaptchaSiteKey);
         }
       })
       .catch((err) => {
@@ -143,10 +147,10 @@ export default function AdminLogin() {
                 )}
               />
 
-              {enableRecaptcha && process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && (
+              {enableRecaptcha && recaptchaSiteKey && (
                 <div className="pt-2 pb-4 flex justify-center">
                   <ReCAPTCHA
-                    sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ''}
+                    sitekey={recaptchaSiteKey}
                     onChange={setRecaptchaToken}
                   />
                 </div>

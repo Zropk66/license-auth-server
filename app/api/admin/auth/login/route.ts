@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const recaptchaSetting = await prisma.setting.findUnique({
       where: { key: 'enable_recaptcha' },
     });
-    const hasRecaptchaKeys = !!(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && process.env.RECAPTCHA_SECRET_KEY);
+    const hasRecaptchaKeys = !!((process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || process.env.RECAPTCHA_SITE_KEY) && process.env.RECAPTCHA_SECRET_KEY);
     const enableRecaptcha = hasRecaptchaKeys && (recaptchaSetting ? recaptchaSetting.value !== 'false' : true);
 
     if (enableRecaptcha) {

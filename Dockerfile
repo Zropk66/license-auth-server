@@ -18,6 +18,10 @@ COPY . .
 # Generate Prisma Client
 RUN npx prisma generate
 
+# NEXT_PUBLIC_ vars must be available at build time (Next.js inlines them into the bundle)
+ARG NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+ENV NEXT_PUBLIC_RECAPTCHA_SITE_KEY=$NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
