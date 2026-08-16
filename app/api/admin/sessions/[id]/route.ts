@@ -5,14 +5,14 @@ import { logAction } from '@/lib/audit';
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateAdminAuth(req);
   if (!('payload' in authResult)) {
     return authResult;
   }
   try {
-    const { id } = params;
+    const { id } = await params;
     const session = await prisma.session.findUnique({ where: { id } });
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });

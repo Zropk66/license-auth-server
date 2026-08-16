@@ -6,7 +6,7 @@ import { updateManagerSchema } from '@/lib/validations';
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateAdminAuth(req);
   if (!('payload' in authResult)) {
@@ -34,7 +34,7 @@ export async function PUT(
       );
     }
     const { password, role } = parseResult.data;
-    const { id } = params;
+    const { id } = await params;
 
     const targetManager = await prisma.admin.findUnique({
       where: { id },
@@ -89,7 +89,7 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateAdminAuth(req);
   if (!('payload' in authResult)) {
@@ -105,7 +105,7 @@ export async function DELETE(
     );
   }
 
-  const { id } = params;
+  const { id } = await params;
 
   // 不允许删除自己
   if (payload.id === id) {

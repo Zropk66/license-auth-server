@@ -5,7 +5,7 @@ import { logAction } from '@/lib/audit';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateAdminAuth(req);
   // If not authorized, authResult is a NextResponse, so return it directly
@@ -13,7 +13,7 @@ export async function GET(
     return authResult;
   }
   try {
-    const { id } = params;
+    const { id } = await params;
     const user = await prisma.user.findUnique({
       where: { id },
       select: { id: true, username: true, userHash: true, createdAt: true },
@@ -31,7 +31,7 @@ export async function GET(
     });
 
     const processedLicenses = licenses.map(license => {
-      let durationMinutes = 0;
+      let durationMinutes: number;
       if (license.licenseType === 'duration') {
         durationMinutes = license.duration || 0;
       } else {
@@ -62,7 +62,7 @@ export async function GET(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateAdminAuth(req);
   // If not authorized, authResult is a NextResponse, so return it directly
@@ -70,7 +70,7 @@ export async function DELETE(
     return authResult;
   }
   try {
-    const { id } = params;
+    const { id } = await params;
     // Check if user exists
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) {

@@ -65,7 +65,7 @@ const detailInclude = {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateAdminAuth(req);
   // 如果未授权，authResult 是 NextResponse，直接返回
@@ -73,7 +73,7 @@ export async function GET(
     return authResult;
   }
   try {
-    const { id } = params;
+    const { id } = await params;
     const license = await prisma.license.findUnique({
       where: { id },
       include: detailInclude,
@@ -96,7 +96,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateAdminAuth(req);
   // 如果未授权，authResult 是 NextResponse，直接返回
@@ -104,7 +104,7 @@ export async function PATCH(
     return authResult;
   }
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json();
 
     // 使用 zod schema 验证请求体

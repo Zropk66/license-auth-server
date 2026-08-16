@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authResult = await validateUserAuth(req);
   if (!('payload' in authResult)) {
@@ -12,7 +12,7 @@ export async function GET(
   }
   const { payload } = authResult;
   try {
-    const { id } = params;
+    const { id } = await params;
     const license = await prisma.license.findUnique({
       where: {
         id,

@@ -67,7 +67,7 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 
 // Auth Helpers
 export async function getSession() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const token = cookieStore.get('auth_token')?.value;
 
   if (!token) return null;
