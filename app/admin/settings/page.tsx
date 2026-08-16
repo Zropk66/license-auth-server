@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -47,9 +48,21 @@ interface Setting {
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasTurnstileKeys, setHasTurnstileKeys] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/admin/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.role !== 'owner') {
+          router.replace('/admin/dashboard');
+        }
+      })
+      .catch(() => {});
+  }, [router]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),

@@ -62,7 +62,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const NavLinks = () => (
     <>
       {navigation
-        .filter((item) => !(item.href === '/admin/managers' && role !== 'owner'))
+        .filter((item) => !((item.href === '/admin/managers' || item.href === '/admin/settings') && role !== 'owner'))
         .map((item) => {
           const isActive = pathname === item.href;
 
