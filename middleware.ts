@@ -52,7 +52,8 @@ export async function middleware(request: NextRequest) {
     (pathname.startsWith('/admin') && pathname !== '/admin/login') ||
     (pathname.startsWith('/user') && pathname !== '/user/login') ||
     pathname === '/admin/login' ||
-    pathname === '/user/login'
+    pathname === '/user/login' ||
+    pathname === '/'
   ) {
     const portalAuth = request.cookies.get('portal_authorized')?.value;
     const secret = process.env.JWT_SECRET || 'fallback-portal-secret-salt-min-16';
@@ -124,6 +125,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    '/',
     '/admin/:path*',
     '/user/:path*',
     '/api/admin/:path*',
