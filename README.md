@@ -13,11 +13,12 @@
 ### 1. 灵活的卡密双类型系统
 *   **即时卡 (固定到期)**：创建后即刻生效，并在指定的到期时间准时失效。
 *   **激活卡 (时长起算)**：创建时设定授权时长（如 30天/12小时），在客户端首次验证登录时激活并起算时长。
-*   **非活跃自动挂起（激活卡独占）**：若客户端断开连接或关闭，验证服务器会自动判定为“非活跃”并**暂停计时**，在客户端重新连线心跳时恢复扣减，实现“用多久扣多久”的精确离线补偿。
+*   **非活跃自动挂起（激活卡独占）**：若客户端断开连接或关闭，验证服务器会自动判定为"非活跃"并**暂停计时**，在客户端重新连线心跳时恢复扣减，实现"用多久扣多久"的精确离线补偿。
 
 ### 2. 多维度安全防护
 *   **客户端通讯高强度加密**：客户端与验证 API 之间的全部数据传输都经过对称 AES-256-GCM 算法动态加密，防篡改、防抓包分析。
 *   **安全验证防爆破机制**：记录客户端的每一次验证尝试。如果 5 分钟内某一 IP 发生 10 次以上验证失败（如密钥不存在、解密异常、硬件ID不匹配），系统将自动封禁该 IP 5 分钟，防止暴力穷举。
+*   **登录限流保护**：管理员和用户登录端点均内置速率限制（15 分钟内最多 10 次尝试），防止密码暴力破解。
 *   **硬件一机一码绑定**：支持强绑定客户端硬件 ID（硬件一机一码）。未启用硬件绑定时正常登录；已启用未绑定时首次登录自动绑定；已绑定后限制在同一台设备上使用，管理员可手动一键重置绑定关系。
 
 ### 3. 在线会话 (Session) 审计与管理
@@ -36,9 +37,9 @@
 
 ## 🛠️ 技术栈
 
-*   **前端 / 服务端**：Next.js 14 App Router, React, Tailwind CSS, shadcn/ui
+*   **前端 / 服务端**：Next.js 13 (App Router), React, Tailwind CSS, shadcn/ui
 *   **数据库 / ORM**：PostgreSQL, Prisma ORM
-*   **安全验证**：JWT (JSON Web Tokens), AES-256 加密, reCAPTCHA 人机验证
+*   **安全验证**：JWT (JSON Web Tokens), AES-256-GCM 加密, reCAPTCHA 人机验证
 *   **图表绘制**：Recharts
 
 ---
@@ -67,18 +68,18 @@
     ```
 
 3.  **配置环境变量**：
-    在项目根目录下创建一个 `.env` 环境变量文件，填入以下必要参数：
+    复制 `.env.example` 为 `.env`，并填入以下必要参数：
     ```env
-    # 数据库连接地址
-    DATABASE_URL="postgresql://username:password@localhost:5432/license_auth"
+    # 数据库连接地址（本地开发用）
+    DATABASE_URL="postgresql://license_auth:your-password@localhost:5432/license_auth"
 
-    # JWT 登录鉴权密钥 (用于后台登录会话生成)
-    JWT_SECRET="your-secure-jwt-secret-key"
+    # JWT 登录鉴权密钥 (至少 16 字符)
+    JWT_SECRET="your-jwt-secret-min-16-chars"
 
-    # 对称加密密钥 (与客户端通讯用，需为 32 位字符)
-    AES_SECRET_KEY="your-secure-aes-32char-secret-key"
+    # 对称加密密钥 (与客户端通讯用)
+    AES_SECRET_KEY="your-aes-secret-key"
 
-    # 谷歌 reCAPTCHA (图形人机验证，可选)
+    # 谷歌 reCAPTCHA (可选)
     NEXT_PUBLIC_RECAPTCHA_SITE_KEY="your-recaptcha-site-key"
     RECAPTCHA_SECRET_KEY="your-recaptcha-secret-key"
     ```
@@ -98,16 +99,38 @@
 
 系统已完整容器化，支持使用 Docker 一键拉起 Web 服务及 PostgreSQL 数据库。
 
-1. **克隆项目并进入目录**。
-2. **修改 `docker-compose.yml` 中的环境变量**（如 `JWT_SECRET` 和 `AES_SECRET_KEY` 等）。
-3. **启动容器**：
-   ```bash
-   docker compose up --build -d
-   ```
-   此命令会自动编译轻量化 Next.js Standalone 镜像、自动执行数据库迁移并拉起服务，在 `http://localhost:3000` 开放访问。
+1.  **克隆项目并进入目录**：
+    ```bash
+    git clone https://github.com/Zropk66/license-auth-server.git
+    cd license-auth-server
+    ```
 
-6.  **初次登录说明**：
-    当数据库中无管理员账号时，初次访问后台输入任意管理员账密，系统将以此自动初始化并创建首个 Owner（主管理员）超级账号。
+2.  **配置环境变量**：
+    复制 `.env.example` 为 `.env`，修改其中的密码和密钥为真实值：
+    ```env
+    POSTGRES_USER=license_auth
+    POSTGRES_PASSWORD=your-secure-password
+    POSTGRES_DB=license_auth
+
+    JWT_SECRET="your-jwt-secret-min-16-chars"
+    AES_SECRET_KEY="your-aes-secret-key"
+    ```
+    Docker Compose 会自动从这些变量构造 `DATABASE_URL` 指向内部 `db` 服务。
+
+3.  **（可选）设置首次部署保护**：
+    在 `.env` 中设置 `SETUP_TOKEN`，首次创建 Owner 账号时需要提供此令牌，防止被抢注：
+    ```env
+    SETUP_TOKEN="your-setup-token-here"
+    ```
+
+4.  **启动容器**：
+    ```bash
+    docker compose up --build -d
+    ```
+    此命令会自动编译轻量化 Next.js Standalone 镜像、自动执行数据库迁移并拉起服务，在 `http://localhost:3000` 开放访问。
+
+5.  **初次登录说明**：
+    当数据库中无管理员账号时，初次访问后台输入任意管理员账密，系统将以此自动初始化并创建首个 Owner（主管理员）超级账号。如果设置了 `SETUP_TOKEN`，登录时需在请求中携带匹配的令牌。
 
 ---
 
@@ -133,8 +156,10 @@ npm run start
 
 ## 🔒 安全建议
 
-1.  **强密钥保护**：确保 `.env` 中的 `AES_SECRET_KEY` 和 `JWT_SECRET` 足够复杂且保密。
+1.  **强密钥保护**：确保 `.env` 中的 `AES_SECRET_KEY` 和 `JWT_SECRET` 足够复杂且保密，`JWT_SECRET` 至少 16 字符。
 2.  **HTTPS 部署**：验证 API 涉及卡密和硬件验证传输，请务必配置 HTTPS 证书提供传输层加密支持。
+3.  **首次部署令牌**：生产环境建议设置 `SETUP_TOKEN`，防止 Owner 账号被恶意抢注。
+4.  **reCAPTCHA**：建议配置 Google reCAPTCHA 人机验证，防止自动化攻击。
 
 ---
 
@@ -143,4 +168,3 @@ npm run start
 本项目基于 [MIT](LICENSE) 开源许可证发布。
 
 本项目基于原作者 [Jawad Shafique](https://github.com/killcod3) 的开源项目 [license-management-system](https://github.com/killcod3/license-management-system) 进行二次开发与功能增强。感谢原作者的开源贡献。
-
