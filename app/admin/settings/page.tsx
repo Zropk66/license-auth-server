@@ -49,6 +49,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasTurnstileKeys, setHasTurnstileKeys] = useState(true);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -62,11 +63,21 @@ export default function SettingsPage() {
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const response = await fetch('/api/admin/settings');
-        if (!response.ok) {
+        const [settingsRes, publicRes] = await Promise.all([
+          fetch('/api/admin/settings'),
+          fetch('/api/settings/public'),
+        ]);
+
+        if (!settingsRes.ok) {
           throw new Error('获取设置失败');
         }
-        const data: Setting[] = await response.json();
+
+        const data: Setting[] = await settingsRes.json();
+        const publicData = await publicRes.json();
+
+        if (publicData && typeof publicData.turnstileSiteKey === 'string') {
+          setHasTurnstileKeys(!!publicData.turnstileSiteKey);
+        }
 
         const heartbeat = data.find(s => s.key === 'heartbeat_interval')?.value || '30';
         const timeout = data.find(s => s.key === 'session_timeout')?.value || '300';
@@ -100,9 +111,11 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          heartbeat_interval: data.heartbeat_interval,
-          session_timeout: data.session_timeout,
-          enable_recaptcha: String(data.enable_recaptcha),
+          settings: [
+            { key: 'heartbeat_interval', value: data.heartbeat_interval },
+            { key: 'session_timeout', value: data.session_timeout },
+            { key: 'enable_recaptcha', value: String(data.enable_recaptcha) },
+          ],
         }),
       });
 
@@ -189,11 +202,16 @@ export default function SettingsPage() {
                     name="enable_recaptcha"
                     render={({ field }) => (
                       <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 flex-1">
                           <FormLabel className="text-base">登录验证码 (Turnstile)</FormLabel>
                           <FormDescription>
                             启用后，管理员和用户登录界面将进行 Cloudflare Turnstile 验证。
                           </FormDescription>
+                          {!hasTurnstileKeys && (
+                            <p className="text-sm text-destructive mt-2">
+                              ⚠ Turnstile 密钥未配置，请在 .env 中设置 NEXT_PUBLIC_TURNSTILE_SITE_KEY 和 TURNSTILE_SECRET_KEY 后重启容器。
+                            </p>
+                          )}
                         </div>
                         <FormControl>
                           <Switch
