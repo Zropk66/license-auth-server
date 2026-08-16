@@ -13,6 +13,14 @@ import { ShieldCheck, Loader2 } from 'lucide-react';
 import ReCAPTCHA from 'react-google-recaptcha';
 import { useToast } from '@/hooks/use-toast';
 
+// 使用 recaptcha.net 替代 google.com，改善部分地区可访问性
+if (typeof window !== 'undefined') {
+  window.recaptchaOptions = {
+    useRecaptchaNet: true,
+    ...window.recaptchaOptions,
+  };
+}
+
 const formSchema = z.object({
   username: z.string().min(3, '用户名至少需要3个字符'),
   password: z.string().min(6, '密码至少需要6个字符'),
@@ -152,6 +160,13 @@ export default function AdminLogin() {
                   <ReCAPTCHA
                     sitekey={recaptchaSiteKey}
                     onChange={setRecaptchaToken}
+                    onErrored={() => {
+                      toast({
+                        title: '验证码加载失败',
+                        description: '无法加载 reCAPTCHA，请检查网络连接或刷新页面重试。',
+                        variant: 'destructive',
+                      });
+                    }}
                   />
                 </div>
               )}
