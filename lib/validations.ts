@@ -53,13 +53,13 @@ export const createUserSchema = z.object({
 // Manager creation
 export const createManagerSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(100),
-  password: z.string().min(4, 'Password must be at least 4 characters').max(200),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(200),
   role: z.enum(['admin', 'owner']),
 });
 
 // Manager update
 export const updateManagerSchema = z.object({
-  password: z.string().min(4, 'Password must be at least 4 characters').max(200).optional(),
+  password: z.string().min(6, 'Password must be at least 6 characters').max(200).optional(),
   role: z.enum(['admin', 'owner']).optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,

@@ -72,10 +72,10 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // 密码强度校验：至少 4 字符
-        if (password.length < 4) {
+        // 密码强度校验：至少 6 字符
+        if (password.length < 6) {
           return NextResponse.json(
-            { error: 'Password must be at least 4 characters' },
+            { error: 'Password must be at least 6 characters' },
             { status: 400 }
           );
         }
