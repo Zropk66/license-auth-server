@@ -4,14 +4,14 @@ import { z } from 'zod';
 export const adminLoginSchema = z.object({
   username: z.string().min(1, 'Username is required').max(100),
   password: z.string().min(1, 'Password is required').max(200),
-  recaptchaToken: z.string().nullish(),
+  turnstileToken: z.string().nullish(),
   setupToken: z.string().nullish(),
 });
 
 // User login
 export const userLoginSchema = z.object({
   userHash: z.string().min(1, 'User hash is required').max(100),
-  recaptchaToken: z.string().nullish(),
+  turnstileToken: z.string().nullish(),
 });
 
 // License creation

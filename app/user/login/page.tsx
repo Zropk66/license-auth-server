@@ -10,15 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Key, Loader2 } from 'lucide-react';
-import ReCAPTCHA from 'react-google-recaptcha';
+import Turnstile from '@/components/turnstile';
 import { useToast } from '@/hooks/use-toast';
-
-// 使用 recaptcha.net 替代 google.com，改善部分地区可访问性
-if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).recaptchaOptions = {
-    useRecaptchaNet: true,
-  };
-}
 
 const formSchema = z.object({
   userHash: z.string().min(1, '用户哈希是必填项'),
@@ -30,19 +23,19 @@ export default function UserLogin() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
-  const [enableRecaptcha, setEnableRecaptcha] = useState(true);
-  const [recaptchaSiteKey, setRecaptchaSiteKey] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [enableCaptcha, setEnableCaptcha] = useState(true);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
 
   useEffect(() => {
     fetch('/api/settings/public')
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data.enableRecaptcha === 'boolean') {
-          setEnableRecaptcha(data.enableRecaptcha);
+          setEnableCaptcha(data.enableRecaptcha);
         }
-        if (data && typeof data.recaptchaSiteKey === 'string') {
-          setRecaptchaSiteKey(data.recaptchaSiteKey);
+        if (data && typeof data.turnstileSiteKey === 'string') {
+          setTurnstileSiteKey(data.turnstileSiteKey);
         }
       })
       .catch((err) => {
@@ -58,10 +51,10 @@ export default function UserLogin() {
   });
 
   const onSubmit = async (data: FormValues) => {
-    if (enableRecaptcha && !recaptchaToken) {
+    if (enableCaptcha && !turnstileToken) {
       toast({
-        title: '需要 reCAPTCHA 验证',
-        description: '请完成 reCAPTCHA 验证',
+        title: '需要验证码验证',
+        description: '请完成验证码验证',
         variant: 'destructive',
       });
       return;
@@ -77,7 +70,7 @@ export default function UserLogin() {
         },
         body: JSON.stringify({
           ...data,
-          recaptchaToken: enableRecaptcha ? recaptchaToken : null,
+          turnstileToken: enableCaptcha ? turnstileToken : null,
         }),
       });
 
@@ -133,15 +126,15 @@ export default function UserLogin() {
                 )}
               />
 
-              {enableRecaptcha && recaptchaSiteKey && (
+              {enableCaptcha && turnstileSiteKey && (
                 <div className="pt-2 pb-4 flex justify-center">
-                  <ReCAPTCHA
-                    sitekey={recaptchaSiteKey}
-                    onChange={setRecaptchaToken}
+                  <Turnstile
+                    siteKey={turnstileSiteKey}
+                    onVerify={setTurnstileToken}
                     onErrored={() => {
                       toast({
                         title: '验证码加载失败',
-                        description: '无法加载 reCAPTCHA，请检查网络连接或刷新页面重试。',
+                        description: '无法加载验证码，请检查网络连接或刷新页面重试。',
                         variant: 'destructive',
                       });
                     }}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { isValidRecaptcha } from '@/lib/utils';
+import { isValidTurnstileToken } from '@/lib/utils';
 import { signJWT } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { adminLoginSchema } from '@/lib/validations';
@@ -29,24 +29,25 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const { username, password, recaptchaToken, setupToken } = parseResult.data;
+    const { username, password, turnstileToken, setupToken } = parseResult.data;
 
-    // 如果启用了 reCAPTCHA 则进行校验
-    const recaptchaSetting = await prisma.setting.findUnique({
+    // 如果启用了验证码则进行校验
+    const captchaSetting = await prisma.setting.findUnique({
       where: { key: 'enable_recaptcha' },
     });
-    const hasRecaptchaKeys = !!((process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || process.env.RECAPTCHA_SITE_KEY) && process.env.RECAPTCHA_SECRET_KEY);
-    const enableRecaptcha = hasRecaptchaKeys && (recaptchaSetting ? recaptchaSetting.value !== 'false' : true);
+    const hasCaptchaKeys = !!(process.env.TURNSTILE_SECRET_KEY && (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || process.env.TURNSTILE_SITE_KEY));
+    const enableCaptcha = hasCaptchaKeys && (captchaSetting ? captchaSetting.value !== 'false' : true);
 
-    if (enableRecaptcha) {
-      const recaptchaValid = await isValidRecaptcha(
-        recaptchaToken,
-        process.env.RECAPTCHA_SECRET_KEY || ''
+    if (enableCaptcha) {
+      const captchaValid = await isValidTurnstileToken(
+        turnstileToken,
+        process.env.TURNSTILE_SECRET_KEY || '',
+        ip
       );
 
-      if (!recaptchaValid) {
+      if (!captchaValid) {
         return NextResponse.json(
-          { error: 'reCAPTCHA verification failed' },
+          { error: '验证码验证失败' },
           { status: 400 }
         );
       }

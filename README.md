@@ -39,7 +39,7 @@
 
 *   **前端 / 服务端**：Next.js 13 (App Router), React, Tailwind CSS, shadcn/ui
 *   **数据库 / ORM**：PostgreSQL, Prisma ORM
-*   **安全验证**：JWT (JSON Web Tokens), AES-256-GCM 加密, reCAPTCHA 人机验证
+*   **安全验证**：JWT (JSON Web Tokens), AES-256-GCM 加密, Cloudflare Turnstile 人机验证
 *   **图表绘制**：Recharts
 
 ---
@@ -79,9 +79,9 @@
     # 对称加密密钥 (与客户端通讯用)
     AES_SECRET_KEY="your-aes-secret-key"
 
-    # 谷歌 reCAPTCHA (可选)
-    NEXT_PUBLIC_RECAPTCHA_SITE_KEY="your-recaptcha-site-key"
-    RECAPTCHA_SECRET_KEY="your-recaptcha-secret-key"
+    # Cloudflare Turnstile (可选)
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY="your-turnstile-site-key"
+    TURNSTILE_SECRET_KEY="your-turnstile-secret-key"
     ```
 
 4.  **初始化数据库结构**：
@@ -159,7 +159,7 @@ npm run start
 1.  **强密钥保护**：确保 `.env` 中的 `AES_SECRET_KEY` 和 `JWT_SECRET` 足够复杂且保密，`JWT_SECRET` 至少 16 字符。
 2.  **HTTPS 部署**：验证 API 涉及卡密和硬件验证传输，请务必配置 HTTPS 证书提供传输层加密支持。
 3.  **首次部署令牌**：生产环境建议设置 `SETUP_TOKEN`，防止 Owner 账号被恶意抢注。
-4.  **reCAPTCHA**：建议配置 Google reCAPTCHA 人机验证，防止自动化攻击。
+4.  **Turnstile**：建议配置 Cloudflare Turnstile 人机验证，防止自动化攻击。
 
 ---
 

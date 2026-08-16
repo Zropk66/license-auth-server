@@ -190,9 +190,9 @@ export default function SettingsPage() {
                     render={({ field }) => (
                       <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                         <div className="space-y-0.5">
-                          <FormLabel className="text-base">登录验证码 (reCAPTCHA)</FormLabel>
+                          <FormLabel className="text-base">登录验证码 (Turnstile)</FormLabel>
                           <FormDescription>
-                            启用后，管理员和用户登录界面将进行 reCAPTCHA 验证。
+                            启用后，管理员和用户登录界面将进行 Cloudflare Turnstile 验证。
                           </FormDescription>
                         </div>
                         <FormControl>

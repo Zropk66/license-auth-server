@@ -39,7 +39,7 @@ This system features separate **Admin Management Portal** and **User Self-Servic
 
 *   **Frontend / Backend**: Next.js 13 (App Router), React, Tailwind CSS, shadcn/ui
 *   **Database / ORM**: PostgreSQL, Prisma ORM
-*   **Security & Verification**: JWT, AES-256-GCM, Google reCAPTCHA
+*   **Security & Verification**: JWT, AES-256-GCM, Cloudflare Turnstile
 *   **Data Charts**: Recharts
 
 ---
@@ -79,9 +79,9 @@ This system features separate **Admin Management Portal** and **User Self-Servic
     # AES Encryption Key (for client communication)
     AES_SECRET_KEY="your-aes-secret-key"
 
-    # Google reCAPTCHA (Optional)
-    NEXT_PUBLIC_RECAPTCHA_SITE_KEY="your-recaptcha-site-key"
-    RECAPTCHA_SECRET_KEY="your-recaptcha-secret-key"
+    # Cloudflare Turnstile (Optional)
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY="your-turnstile-site-key"
+    TURNSTILE_SECRET_KEY="your-turnstile-secret-key"
     ```
 
 4.  **Sync Database Schema**:
@@ -159,7 +159,7 @@ npm run start
 1.  **Strong Secrets**: Ensure `AES_SECRET_KEY` and `JWT_SECRET` in `.env` are sufficiently complex. `JWT_SECRET` must be at least 16 characters.
 2.  **HTTPS Deployment**: The verification API transmits license keys and hardware IDs. Always configure HTTPS for transport-layer encryption.
 3.  **Setup Token**: For production deployments, set `SETUP_TOKEN` to prevent unauthorized Owner account creation.
-4.  **reCAPTCHA**: Configure Google reCAPTCHA to mitigate automated attacks.
+4.  **Turnstile**: Configure Cloudflare Turnstile to mitigate automated attacks.
 
 ---
 

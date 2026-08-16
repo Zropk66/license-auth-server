@@ -29,21 +29,22 @@ export function generateLicenseKey(): string {
   return segments.join('-');
 }
 
-export function isValidRecaptcha(
-  recaptchaToken: string | null | undefined,
-  secretKey: string
+export function isValidTurnstileToken(
+  token: string | null | undefined,
+  secretKey: string,
+  remoteip?: string
 ): Promise<boolean> {
-  if (!recaptchaToken) return Promise.resolve(false);
+  if (!token) return Promise.resolve(false);
 
-  const verificationUrl = 'https://www.recaptcha.net/recaptcha/api/siteverify';
-
-  // Send secret in POST body (not URL query params) to avoid leaking in logs
   const body = new URLSearchParams({
     secret: secretKey,
-    response: recaptchaToken,
+    response: token,
   });
+  if (remoteip) {
+    body.set('remoteip', remoteip);
+  }
 
-  return fetch(verificationUrl, {
+  return fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
