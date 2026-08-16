@@ -7,7 +7,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const authResult = await validateUserAuth(req);
-  // If not authorized, authResult is a NextResponse, so return it directly
   if (!('payload' in authResult)) {
     return authResult;
   }
@@ -17,7 +16,7 @@ export async function GET(
     const license = await prisma.license.findUnique({
       where: {
         id,
-        userId: payload.id, // Ensure the license belongs to the authenticated user
+        userId: payload.id,
       },
     });
     if (!license) {

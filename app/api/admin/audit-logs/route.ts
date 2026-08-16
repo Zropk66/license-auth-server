@@ -9,8 +9,11 @@ export async function GET(req: NextRequest) {
     return authResult;
   }
   try {
+    const { id: adminId, role } = authResult.payload;
     const url = new URL(req.url);
     const pageParam = url.searchParams.get('page');
+
+    const where = role === 'owner' ? undefined : { adminId };
 
     const orderBy = { createdAt: 'desc' as const };
     const include = {
@@ -19,9 +22,9 @@ export async function GET(req: NextRequest) {
       },
     } as const;
 
-    // 未提供 page 参数时返回全部数据（数组格式），保持前端兼容
     if (pageParam === null) {
       const logs = await prisma.auditLog.findMany({
+        where,
         orderBy,
         include,
       });
@@ -43,12 +46,13 @@ export async function GET(req: NextRequest) {
 
     const [logs, total] = await Promise.all([
       prisma.auditLog.findMany({
+        where,
         orderBy,
         include,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.auditLog.count(),
+      prisma.auditLog.count({ where }),
     ]);
 
     return NextResponse.json({
