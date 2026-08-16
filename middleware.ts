@@ -48,13 +48,18 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  if (
-    (pathname.startsWith('/admin') && pathname !== '/admin/login') ||
-    (pathname.startsWith('/user') && pathname !== '/user/login') ||
-    pathname === '/admin/login' ||
-    pathname === '/user/login' ||
-    pathname === '/'
-  ) {
+  // 3. 动态读取需要门禁保护的路径（由 PORTAL_PROTECTED_PATHS 配置，逗号分隔）
+  // 可选值：home（首页 /）、admin（管理门户）、user（用户门户）
+  const protectedPaths = (process.env.PORTAL_PROTECTED_PATHS || 'home,admin,user')
+    .split(',')
+    .map(s => s.trim().toLowerCase());
+
+  const isProtected =
+    (protectedPaths.includes('home') && pathname === '/') ||
+    (protectedPaths.includes('admin') && (pathname.startsWith('/admin') || pathname === '/admin/login')) ||
+    (protectedPaths.includes('user') && (pathname.startsWith('/user') || pathname === '/user/login'));
+
+  if (isProtected) {
     const portalAuth = request.cookies.get('portal_authorized')?.value;
     const secret = process.env.JWT_SECRET || 'fallback-portal-secret-salt-min-16';
     const expectedSignature = await generatePortalSignature(secret);
@@ -125,10 +130,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/',
-    '/admin/:path*',
-    '/user/:path*',
-    '/api/admin/:path*',
-    '/api/user/:path*',
+    '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
