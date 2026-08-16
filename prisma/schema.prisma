@@ -1,0 +1,120 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id              String     @id @default(cuid())
+  username        String     @unique
+  password        String
+  role            String     // "owner" or "admin"
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  createdUsers    User[]     @relation("UserCreator")
+  createdLicenses License[]  @relation("LicenseCreator")
+  auditLogs       AuditLog[]
+
+  @@index([role])
+}
+
+model User {
+  id          String    @id @default(cuid())
+  username    String
+  userHash    String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  licenses    License[]
+  createdById String?
+  createdBy   Admin?    @relation("UserCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([username])
+  @@index([createdById])
+}
+
+model License {
+  id                     String    @id @default(cuid())
+  licenseKey             String    @unique
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                 String
+  softwareName           String
+  expirationDate         DateTime
+  hardwareId             String?
+  hardwareBindingEnabled Boolean   @default(false)
+  status                 String    @default("active")
+  licenseType            String    @default("fixed") // "fixed" or "duration"
+  duration               Int?      // Duration in minutes
+  activatedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  sessions               Session[]
+  createdById            String?
+  createdBy              Admin?    @relation("LicenseCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([licenseType])
+  @@index([status, expirationDate])
+  @@index([activatedAt])
+  @@index([createdById])
+}
+
+model Session {
+  id            String   @id @default(cuid())
+  licenseKey    String
+  license       License  @relation(fields: [licenseKey], references: [licenseKey], onDelete: Cascade)
+  hardwareId    String?
+  ipAddress     String?
+  lastHeartbeat DateTime @default(now())
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([licenseKey, hardwareId])
+  @@index([licenseKey])
+  @@index([status, lastHeartbeat])
+  @@index([ipAddress])
+}
+
+model Setting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String?
+  admin      Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  action     String   // "create_license" | "revoke_license" | "suspend_license" | "resume_license" | "edit_license" | "delete_user" | "kick_session"
+  targetType String   // "license" | "user" | "session"
+  targetId   String
+  details    String?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+model VerificationAttempt {
+  id         String   @id @default(cuid())
+  licenseKey String?
+  ipAddress  String
+  success    Boolean
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([ipAddress, success, createdAt])
+  @@index([licenseKey])
+  @@index([createdAt])
+}

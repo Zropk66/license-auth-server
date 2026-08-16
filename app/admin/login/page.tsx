@@ -1,0 +1,176 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { ShieldCheck, Loader2 } from 'lucide-react';
+import ReCAPTCHA from 'react-google-recaptcha';
+import { useToast } from '@/hooks/use-toast';
+
+const formSchema = z.object({
+  username: z.string().min(3, '用户名至少需要3个字符'),
+  password: z.string().min(6, '密码至少需要6个字符'),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+export default function AdminLogin() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const [enableRecaptcha, setEnableRecaptcha] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/settings/public')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && typeof data.enableRecaptcha === 'boolean') {
+          setEnableRecaptcha(data.enableRecaptcha);
+        }
+      })
+      .catch((err) => {
+        console.error('Error fetching settings:', err);
+      });
+  }, []);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      username: '',
+      password: '',
+    },
+  });
+
+  const onSubmit = async (data: FormValues) => {
+    if (enableRecaptcha && !recaptchaToken) {
+      toast({
+        title: '需要 reCAPTCHA 验证',
+        description: '请完成 reCAPTCHA 验证',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/admin/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...data,
+          recaptchaToken: enableRecaptcha ? recaptchaToken : null,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || '登录失败');
+      }
+
+      toast({
+        title: '登录成功',
+        description: '正在跳转至控制台...',
+      });
+
+      router.push('/admin/dashboard');
+    } catch (error) {
+      toast({
+        title: '登录失败',
+        description: error instanceof Error ? error.message : '发生未知错误',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader className="space-y-1">
+          <div className="flex items-center justify-center mb-4">
+            <ShieldCheck className="h-10 w-10 text-primary" />
+          </div>
+          <CardTitle className="text-2xl text-center">管理员登录</CardTitle>
+          <CardDescription className="text-center">
+            输入您的凭据以访问管理员后台
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>用户名</FormLabel>
+                    <FormControl>
+                      <Input placeholder="请输入您的用户名" {...field} disabled={isLoading} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>密码</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="password"
+                        placeholder="请输入您的密码"
+                        {...field}
+                        disabled={isLoading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {enableRecaptcha && process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && (
+                <div className="pt-2 pb-4 flex justify-center">
+                  <ReCAPTCHA
+                    sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || ''}
+                    onChange={setRecaptchaToken}
+                  />
+                </div>
+              )}
+
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    正在登录...
+                  </>
+                ) : (
+                  '登录'
+                )}
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
+        <CardFooter className="flex justify-center">
+          <p className="text-sm text-muted-foreground text-center">
+            受保护区域。未经授权的访问尝试将被记录。
+          </p>
+        </CardFooter>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,72 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      # Override DATABASE_URL to point to the Docker internal db service
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-license_auth}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-license_auth}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  migration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    env_file: .env
+    environment:
+      # Override DATABASE_URL to point to the Docker internal db service
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-license_auth}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-license_auth}?schema=public
+    # NOTE: For production, replace 'db push' with 'migrate deploy' after creating migration files via 'prisma migrate dev'
+    command: npx prisma db push --accept-data-loss
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-license_auth}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-license_auth}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-license_auth} -d $${POSTGRES_DB:-license_auth}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
