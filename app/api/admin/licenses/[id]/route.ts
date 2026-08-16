@@ -134,6 +134,7 @@ export async function PATCH(
       hardwareBindingEnabled?: boolean;
       duration?: number | null;
       hardwareId?: string | null;
+      activatedAt?: Date;
     } = {};
 
     // 处理状态更新

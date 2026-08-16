@@ -197,7 +197,7 @@ export default function SessionsTable() {
             <Button
               variant="outline"
               size="sm"
-              onClick={fetchSessions}
+              onClick={() => fetchSessions(true)}
               disabled={loading}
             >
               {loading ? (
