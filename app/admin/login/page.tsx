@@ -15,9 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 
 // 使用 recaptcha.net 替代 google.com，改善部分地区可访问性
 if (typeof window !== 'undefined') {
-  window.recaptchaOptions = {
+  (window as unknown as Record<string, unknown>).recaptchaOptions = {
     useRecaptchaNet: true,
-    ...window.recaptchaOptions,
   };
 }
 
