@@ -48,8 +48,6 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // 3. 动态读取需要门禁保护的路径（由 PORTAL_PROTECTED_PATHS 配置，逗号分隔）
-  // 可选值：home（首页 /）、admin（管理门户）、user（用户门户）
   const protectedPaths = (process.env.PORTAL_PROTECTED_PATHS || 'home,admin,user')
     .split(',')
     .map(s => s.trim().toLowerCase());
