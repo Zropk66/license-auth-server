@@ -3,10 +3,10 @@ FROM node:18-slim AS deps
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+COPY package.json ./
 COPY prisma ./prisma
 
-RUN npm ci || npm install
+RUN npm install
 
 # Stage 2: Rebuild the source code
 FROM node:18-slim AS builder
