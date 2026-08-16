@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
           secure: isSecure,
           sameSite: 'lax',
           path: '/',
-          maxAge: 8 * 60 * 60, // 8 小时
+          maxAge: 60 * 60, // 1 小时
         });
 
         return response;
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
       secure: isSecure,
       sameSite: 'lax',
       path: '/',
-      maxAge: 8 * 60 * 60, // 8 小时
+      maxAge: 60 * 60, // 1 小时
     });
 
     return response;
