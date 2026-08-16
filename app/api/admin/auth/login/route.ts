@@ -5,6 +5,7 @@ import { signJWT } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { adminLoginSchema } from '@/lib/validations';
 import { checkLoginRateLimit, getClientIP } from '@/lib/rate-limit';
+import { logAction } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -91,6 +92,15 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        // 审计日志：首次 owner 创建
+        await logAction({
+          adminId: newAdmin.id,
+          action: 'owner_created',
+          targetType: 'admin',
+          targetId: newAdmin.id,
+          details: { username, ip },
+        });
+
         // 创建 JWT
         const token = await signJWT({
           id: newAdmin.id,
@@ -119,6 +129,15 @@ export async function POST(req: NextRequest) {
         return response;
       }
 
+      // 审计日志：用户不存在且非首次部署
+      await logAction({
+        adminId: null,
+        action: 'login_failed',
+        targetType: 'admin',
+        targetId: username,
+        details: { username, ip, reason: 'user_not_found' },
+      });
+
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -129,6 +148,15 @@ export async function POST(req: NextRequest) {
     const isPasswordValid = await bcrypt.compare(password, admin.password);
 
     if (!isPasswordValid) {
+      // 审计日志：登录失败（密码错误）
+      await logAction({
+        adminId: admin.id,
+        action: 'login_failed',
+        targetType: 'admin',
+        targetId: admin.id,
+        details: { username, ip, reason: 'wrong_password' },
+      });
+
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -141,6 +169,15 @@ export async function POST(req: NextRequest) {
       username: admin.username,
       role: admin.role,
       type: 'admin',
+    });
+
+    // 审计日志：登录成功
+    await logAction({
+      adminId: admin.id,
+      action: 'login_success',
+      targetType: 'admin',
+      targetId: admin.id,
+      details: { username, ip },
     });
 
     // 设置 cookie

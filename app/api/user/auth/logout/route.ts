@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyJWT } from '@/lib/auth';
+import { logAction } from '@/lib/audit';
+import { getClientIP } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   const isSecure = req.headers.get('x-forwarded-proto') === 'https';
+  const ip = getClientIP(req);
+
+  // 尝试从 cookie 中提取用户信息以记录审计日志
+  const token = req.cookies.get('auth_token')?.value;
+  if (token) {
+    const payload = await verifyJWT(token);
+    if (payload && payload.type === 'user') {
+      await logAction({
+        adminId: null,
+        action: 'user_logout',
+        targetType: 'user',
+        targetId: payload.id,
+        details: { username: payload.username, ip },
+      });
+    }
+  }
 
   const response = NextResponse.json({ success: true });
 

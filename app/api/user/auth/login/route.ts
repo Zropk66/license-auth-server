@@ -4,6 +4,7 @@ import { signJWT } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { userLoginSchema } from '@/lib/validations';
 import { checkLoginRateLimit, getClientIP } from '@/lib/rate-limit';
+import { logAction } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -56,6 +57,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (!user) {
+      // 审计日志：用户不存在
+      await logAction({
+        adminId: null,
+        action: 'user_login_failed',
+        targetType: 'user',
+        targetId: userHash,
+        details: { ip, reason: 'user_not_found' },
+      });
+
       return NextResponse.json(
         { error: 'Invalid user hash' },
         { status: 401 }
@@ -67,6 +77,15 @@ export async function POST(req: NextRequest) {
       id: user.id,
       username: user.username,
       type: 'user',
+    });
+
+    // 审计日志：用户登录成功
+    await logAction({
+      adminId: null,
+      action: 'user_login_success',
+      targetType: 'user',
+      targetId: user.id,
+      details: { username: user.username, ip },
     });
 
     // 设置 cookie
