@@ -103,6 +103,15 @@ export const ALLOWED_SETTING_KEYS = [
   'security_enforce_nonce',
   'security_nonce_tolerance_sec',
   'security_auto_blacklist_threshold',
+  'rate_limit_login_max',
+  'rate_limit_login_window_min',
+  'rate_limit_verify_max',
+  'rate_limit_verify_window_min',
+  'rate_limit_heartbeat_max',
+  'rate_limit_heartbeat_window_min',
+  'log_cleanup_verify_days',
+  'log_cleanup_audit_days',
+  'log_cleanup_auto_enabled',
 ] as const;
 
 export const settingsUpdateSchema = z.object({

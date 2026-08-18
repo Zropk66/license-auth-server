@@ -5,7 +5,7 @@ import { getClientIP, checkVerifyRateLimit, createRateLimitResponse } from '@/li
 export async function GET(req: NextRequest) {
   try {
     const ip = getClientIP(req);
-    const rateLimit = checkVerifyRateLimit(ip);
+    const rateLimit = await checkVerifyRateLimit(ip);
     if (!rateLimit.allowed) {
       return createRateLimitResponse(rateLimit.resetIn);
     }

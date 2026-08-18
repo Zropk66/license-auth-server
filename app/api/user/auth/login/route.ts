@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   try {
     // 速率限制：防止暴力破解
     const ip = getClientIP(req);
-    const rateLimit = checkLoginRateLimit(ip);
+    const rateLimit = await checkLoginRateLimit(ip);
     if (!rateLimit.allowed) {
       return createRateLimitResponse(rateLimit.resetIn);
     }

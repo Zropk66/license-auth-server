@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rateLimit = checkLoginRateLimit(ip);
+    const rateLimit = await checkLoginRateLimit(ip);
     if (!rateLimit.allowed) {
       return createRateLimitResponse(rateLimit.resetIn);
     }

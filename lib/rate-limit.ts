@@ -1,5 +1,4 @@
-// Simple in-memory rate limiter for login endpoints
-// For production with multiple instances, consider using Redis instead
+import prisma from './prisma';
 
 interface RateLimitEntry {
   count: number;
@@ -10,14 +9,81 @@ const loginAttempts = new Map<string, RateLimitEntry>();
 const heartbeatAttempts = new Map<string, RateLimitEntry>();
 const verifyAttempts = new Map<string, RateLimitEntry>();
 
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_MAX_ATTEMPTS = 10;
+const DEFAULTS = {
+  LOGIN_MAX: 10,
+  LOGIN_WINDOW_MIN: 15,
+  HEARTBEAT_MAX: 60,
+  HEARTBEAT_WINDOW_MIN: 1,
+  VERIFY_MAX: 30,
+  VERIFY_WINDOW_MIN: 1,
+};
 
-const HEARTBEAT_WINDOW_MS = 60 * 1000;
-const HEARTBEAT_MAX_ATTEMPTS = 60;
+interface RateLimitConfig {
+  loginMax: number;
+  loginWindowMs: number;
+  heartbeatMax: number;
+  heartbeatWindowMs: number;
+  verifyMax: number;
+  verifyWindowMs: number;
+}
 
-const VERIFY_WINDOW_MS = 60 * 1000;
-const VERIFY_MAX_ATTEMPTS = 30;
+let cachedConfig: RateLimitConfig | null = null;
+let configCacheTime = 0;
+const CONFIG_CACHE_TTL = 60_000;
+
+async function getRateLimitConfig(): Promise<RateLimitConfig> {
+  const now = Date.now();
+  if (cachedConfig && now - configCacheTime < CONFIG_CACHE_TTL) {
+    return cachedConfig;
+  }
+
+  try {
+    const settings = await prisma.setting.findMany({
+      where: {
+        key: {
+          in: [
+            'rate_limit_login_max',
+            'rate_limit_login_window_min',
+            'rate_limit_verify_max',
+            'rate_limit_verify_window_min',
+            'rate_limit_heartbeat_max',
+            'rate_limit_heartbeat_window_min',
+          ],
+        },
+      },
+    });
+
+    const get = (key: string, fallback: number) => {
+      const val = settings.find((s) => s.key === key)?.value;
+      const num = val ? parseInt(val, 10) : fallback;
+      return (isNaN(num) || num <= 0) ? fallback : num;
+    };
+
+    cachedConfig = {
+      loginMax: get('rate_limit_login_max', DEFAULTS.LOGIN_MAX),
+      loginWindowMs: get('rate_limit_login_window_min', DEFAULTS.LOGIN_WINDOW_MIN) * 60 * 1000,
+      heartbeatMax: get('rate_limit_heartbeat_max', DEFAULTS.HEARTBEAT_MAX),
+      heartbeatWindowMs: get('rate_limit_heartbeat_window_min', DEFAULTS.HEARTBEAT_WINDOW_MIN) * 60 * 1000,
+      verifyMax: get('rate_limit_verify_max', DEFAULTS.VERIFY_MAX),
+      verifyWindowMs: get('rate_limit_verify_window_min', DEFAULTS.VERIFY_WINDOW_MIN) * 60 * 1000,
+    };
+    configCacheTime = now;
+    return cachedConfig;
+  } catch {
+    return {
+      loginMax: DEFAULTS.LOGIN_MAX,
+      loginWindowMs: DEFAULTS.LOGIN_WINDOW_MIN * 60 * 1000,
+      heartbeatMax: DEFAULTS.HEARTBEAT_MAX,
+      heartbeatWindowMs: DEFAULTS.HEARTBEAT_WINDOW_MIN * 60 * 1000,
+      verifyMax: DEFAULTS.VERIFY_MAX,
+      verifyWindowMs: DEFAULTS.VERIFY_WINDOW_MIN * 60 * 1000,
+    };
+  }
+}
+
+export function invalidateRateLimitConfig() {
+  cachedConfig = null;
+}
 
 function checkRateLimit(
   store: Map<string, RateLimitEntry>,
@@ -41,16 +107,19 @@ function checkRateLimit(
   return { allowed: true, remaining: maxAttempts - entry.count, resetIn: entry.resetTime - now };
 }
 
-export function checkLoginRateLimit(ip: string) {
-  return checkRateLimit(loginAttempts, `login:${ip}`, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS);
+export async function checkLoginRateLimit(ip: string) {
+  const config = await getRateLimitConfig();
+  return checkRateLimit(loginAttempts, `login:${ip}`, config.loginMax, config.loginWindowMs);
 }
 
-export function checkHeartbeatRateLimit(ip: string) {
-  return checkRateLimit(heartbeatAttempts, `hb:${ip}`, HEARTBEAT_MAX_ATTEMPTS, HEARTBEAT_WINDOW_MS);
+export async function checkHeartbeatRateLimit(ip: string) {
+  const config = await getRateLimitConfig();
+  return checkRateLimit(heartbeatAttempts, `hb:${ip}`, config.heartbeatMax, config.heartbeatWindowMs);
 }
 
-export function checkVerifyRateLimit(ip: string) {
-  return checkRateLimit(verifyAttempts, `verify:${ip}`, VERIFY_MAX_ATTEMPTS, VERIFY_WINDOW_MS);
+export async function checkVerifyRateLimit(ip: string) {
+  const config = await getRateLimitConfig();
+  return checkRateLimit(verifyAttempts, `verify:${ip}`, config.verifyMax, config.verifyWindowMs);
 }
 
 export function createRateLimitResponse(resetInMs: number) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { settingsUpdateSchema, ALLOWED_SETTING_KEYS } from '@/lib/validations';
+import { invalidateRateLimitConfig } from '@/lib/rate-limit';
 
 export async function GET(req: NextRequest) {
   const authResult = await validateAdminAuth(req);
@@ -67,6 +68,12 @@ export async function PUT(req: NextRequest) {
     const updatedSettings = await prisma.setting.findMany({
       orderBy: { key: 'asc' },
     });
+
+    // 如果更新了速率限制相关配置，刷新内存缓存
+    const hasRateLimitChange = settingsToUpdate.some((s) => s.key.startsWith('rate_limit_'));
+    if (hasRateLimitChange) {
+      invalidateRateLimitConfig();
+    }
 
     return NextResponse.json({ success: true, settings: updatedSettings });
   } catch (error) {

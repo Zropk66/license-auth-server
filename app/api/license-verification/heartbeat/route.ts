@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rateLimit = checkHeartbeatRateLimit(ip);
+    const rateLimit = await checkHeartbeatRateLimit(ip);
     if (!rateLimit.allowed) {
       return createRateLimitResponse(rateLimit.resetIn);
     }

@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const verifyLimit = checkVerifyRateLimit(ipAddress);
+    const verifyLimit = await checkVerifyRateLimit(ipAddress);
     if (!verifyLimit.allowed) {
       await prisma.verificationAttempt.create({
         data: {

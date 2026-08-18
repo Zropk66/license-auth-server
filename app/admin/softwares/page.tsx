@@ -130,9 +130,6 @@ export default function SoftwaresPage() {
                 <AppWindow className="h-5 w-5 text-primary" />
                 <div>
                   <CardTitle className="text-base">软件列表</CardTitle>
-                  <CardDescription className="text-xs">
-                    客户端调用 <code>/api/license-verification/verify</code> 时将严格核验软件标识。
-                  </CardDescription>
                 </div>
               </div>
               <div className="relative w-full md:w-72">

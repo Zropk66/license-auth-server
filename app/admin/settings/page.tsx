@@ -16,6 +16,8 @@ import { Switch } from '@/components/ui/switch';
 import NotificationChannelsCard from '@/components/admin/notification-channels-card';
 import UnbindPolicyCard from '@/components/admin/unbind-policy-card';
 import SecurityDefenseCard from '@/components/admin/security-defense-card';
+import RateLimitCard from '@/components/admin/rate-limit-card';
+import LogCleanupCard from '@/components/admin/log-cleanup-card';
 
 const formSchema = z.object({
   heartbeat_interval: z.string().refine((val) => {
@@ -174,6 +176,12 @@ export default function SettingsPage() {
 
         {/* 3. 安全防护与防重放 */}
         <SecurityDefenseCard />
+
+        {/* 4. 速率限制策略 */}
+        <RateLimitCard />
+
+        {/* 5. 日志自动清理 */}
+        <LogCleanupCard />
 
         {/* 4. 全局客户端与会话参数 */}
         <Card>
