@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, RefreshCcw, Copy, Key } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 
 type License = {
@@ -15,7 +16,7 @@ type License = {
   softwareName: string;
   expirationDate: string;
   hardwareBindingEnabled: boolean;
-  hardwareId: string | null;
+  hwid: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -120,7 +121,7 @@ export default function UserLicenses() {
                 <TableHead>卡密类型</TableHead>
                 <TableHead>到期时间</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>硬件绑定</TableHead>
+                <TableHead>HWID</TableHead>
                 <TableHead className="w-[100px]">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -148,7 +149,7 @@ export default function UserLicenses() {
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <span className="text-xs sm:text-sm font-mono truncate max-w-[100px] sm:max-w-[120px]">
-                            {license.licenseKey}
+                            <MaskedText value={license.licenseKey} head={6} tail={4} />
                           </span>
                           <Button
                             variant="ghost"
@@ -183,9 +184,9 @@ export default function UserLicenses() {
                       </TableCell>
                       <TableCell>
                         <Badge
-                          variant={license.hardwareBindingEnabled ? (license.hardwareId ? "default" : "secondary") : "outline"}
+                          variant={license.hardwareBindingEnabled ? (license.hwid ? "default" : "secondary") : "outline"}
                         >
-                          {license.hardwareBindingEnabled ? (license.hardwareId ? "已绑定" : "待绑定") : "已禁用"}
+                          {license.hardwareBindingEnabled ? (license.hwid ? "已绑定" : "待绑定") : "已禁用"}
                         </Badge>
                       </TableCell>
                       <TableCell>

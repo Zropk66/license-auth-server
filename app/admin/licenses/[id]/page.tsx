@@ -7,6 +7,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,8 +28,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Key, Copy, User, Calendar, Server, Pencil, Loader2 } from 'lucide-react';
+import { ArrowLeft, Key, Copy, User, Calendar, Server, Pencil, Loader2, Smartphone, Plus, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import EditLicenseDialog from '@/components/admin/edit-license-dialog';
 
@@ -31,7 +42,13 @@ interface LicenseDetails {
   softwareName: string;
   expirationDate: string;
   hardwareBindingEnabled: boolean;
-  hardwareId: string | null;
+  allowSelfUnbind?: boolean;
+  lastUnboundAt?: string | null;
+  monthlyUnbindCount?: number;
+  unbindCountMonth?: string | null;
+  extraUnbindCount?: number;
+  hwid: string | null;
+  deviceName?: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -43,11 +60,17 @@ interface LicenseDetails {
   sessions?: {
     id: string;
     ipAddress: string | null;
-    hardwareId: string | null;
+    hwid: string | null;
     lastHeartbeat: string;
     status: string;
     terminatedAt?: string | null;
     createdAt: string;
+  }[];
+  hardwareHistories?: {
+    id: string;
+    hwid: string;
+    firstBoundAt: string;
+    lastSeenAt: string;
   }[];
 }
 
@@ -63,15 +86,42 @@ export default function LicenseDetailsPage() {
   const [isActivating, setIsActivating] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [kickingSessionId, setKickingSessionId] = useState<string | null>(null);
+  const [globalUnbindConfig, setGlobalUnbindConfig] = useState<{
+    enabled: boolean;
+    maxPerMonth: number;
+    cooldownHours: number;
+    deductHours: number;
+  }>({ enabled: false, maxPerMonth: 1, cooldownHours: 24, deductHours: 0 });
+  const [isHardwareHistoryOpen, setIsHardwareHistoryOpen] = useState(false);
+  const [isSessionsOpen, setIsSessionsOpen] = useState(false);
+  const [isAddCountDialogOpen, setIsAddCountDialogOpen] = useState(false);
+  const [countToAdd, setCountToAdd] = useState('1');
+  const [isUpdatingCount, setIsUpdatingCount] = useState(false);
 
   useEffect(() => {
     fetchLicenseDetails(true);
+    fetchGlobalSettings();
     const timer = setInterval(() => {
       fetchLicenseDetails(false);
     }, 5000);
 
     return () => clearInterval(timer);
   }, [params.id]);
+
+  const fetchGlobalSettings = async () => {
+    try {
+      const res = await fetch('/api/settings/public');
+      if (res.ok) {
+        const data = await res.json();
+        setGlobalUnbindConfig({
+          enabled: !!data.unbindEnabled,
+          maxPerMonth: data.unbindMaxPerMonth || 2,
+          cooldownHours: data.unbindCooldownHours || 24,
+          deductHours: data.unbindDeductHours || 0,
+        });
+      }
+    } catch {}
+  };
 
   const fetchLicenseDetails = async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -182,7 +232,12 @@ export default function LicenseDetailsPage() {
 
     // 计算总时长
     if (license.licenseType === 'duration') {
-      totalMins = license.duration || 0;
+      if (license.activatedAt) {
+        const actualMs = expiry.getTime() - new Date(license.activatedAt).getTime();
+        totalMins = Math.max(0, Math.round(actualMs / (1000 * 60)));
+      } else {
+        totalMins = license.duration || 0;
+      }
     } else {
       const totalMs = expiry.getTime() - created.getTime();
       totalMins = Math.max(0, Math.round(totalMs / (1000 * 60)));
@@ -336,6 +391,81 @@ export default function LicenseDetailsPage() {
     }
   };
 
+  const handleAddUnbindCount = async () => {
+    if (!license) return;
+    const count = parseInt(countToAdd, 10);
+    if (isNaN(count) || count <= 0) {
+      toast({ title: '错误', description: '请输入有效的增加次数', variant: 'destructive' });
+      return;
+    }
+
+    setIsUpdatingCount(true);
+    try {
+      const response = await fetch(`/api/admin/licenses/${license.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addUnbindCount: count }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || '添加换绑额度失败');
+      }
+
+      toast({
+        title: '额度已更新',
+        description: `已为该卡密额外增加 ${count} 次解绑额度`,
+      });
+
+      setLicense(result);
+      setIsAddCountDialogOpen(false);
+    } catch (error) {
+      toast({
+        title: '错误',
+        description: error instanceof Error ? error.message : '操作失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingCount(false);
+    }
+  };
+
+  const handleResetExtraUnbindCount = async () => {
+    if (!license) return;
+    if (!confirm(`确定要清空该卡密当前持有的 +${license.extraUnbindCount || 0} 次额外赠送额度吗？`)) {
+      return;
+    }
+
+    setIsUpdatingCount(true);
+    try {
+      const response = await fetch(`/api/admin/licenses/${license.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetExtraUnbind: true }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || '清空额外额度失败');
+      }
+
+      toast({
+        title: '已清空',
+        description: '该卡密的额外换绑额度已成功清空',
+      });
+
+      setLicense(result);
+    } catch (error) {
+      toast({
+        title: '错误',
+        description: error instanceof Error ? error.message : '操作失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingCount(false);
+    }
+  };
+
   const handleLicenseUpdated = (updatedLicense: LicenseDetails) => {
     setLicense(updatedLicense);
   };
@@ -425,11 +555,11 @@ export default function LicenseDetailsPage() {
                     <Badge variant="default">有效</Badge>
                   )}
                   <Badge
-                    variant={license?.hardwareBindingEnabled ? (license.hardwareId ? "default" : "secondary") : "outline"}
+                    variant={license?.hardwareBindingEnabled ? (license.hwid ? "default" : "secondary") : "outline"}
                   >
                     {license?.hardwareBindingEnabled
-                      ? (license.hardwareId ? "已绑定硬件" : "待绑定硬件")
-                      : "未绑定硬件"}
+                      ? (license.hwid ? "已绑定 HWID" : "待绑定 HWID")
+                      : "未绑定 HWID"}
                   </Badge>
                 </div>
               </div>
@@ -439,7 +569,7 @@ export default function LicenseDetailsPage() {
                 <h3 className="text-sm font-medium text-muted-foreground mb-1">授权密钥</h3>
                 <div className="flex items-center">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">
-                    {license?.licenseKey || '无'}
+                    <MaskedText value={license?.licenseKey || '无'} head={6} tail={4} />
                   </code>
                   <Button
                     variant="ghost"
@@ -586,44 +716,129 @@ export default function LicenseDetailsPage() {
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">
-                  <div className="flex items-center">
-                    <Server className="h-4 w-4 mr-1" />
-                    硬件绑定
-                  </div>
-                </h3>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-1">
+                    <div className="flex items-center">
+                      <Server className="h-4 w-4 mr-1" />
+                      HWID 绑定
+                    </div>
+                  </h3>
 
-                {license?.hardwareBindingEnabled ? (
-                  <div>
-                    {license.hardwareId ? (
-                      <div>
-                        <p className="mb-2">此授权已绑定至特定硬件。</p>
-                        <h4 className="text-xs font-medium text-muted-foreground mb-1">硬件 ID</h4>
-                        <div className="flex items-center">
-                          <code className="bg-muted px-2 py-1 rounded text-sm font-mono break-all">
-                            {license.hardwareId}
-                          </code>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="ml-2 h-8 w-8"
-                            onClick={() => copyToClipboard(license.hardwareId!, '硬件 ID')}
-                          >
-                            <Copy className="h-4 w-4" />
-                            <span className="sr-only">复制硬件 ID</span>
-                          </Button>
+                  {license?.hardwareBindingEnabled ? (
+                    <div>
+                      {license.hwid ? (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center">
+                            <code className="bg-muted px-2 py-1 rounded text-sm font-mono break-all">
+                              <MaskedText value={license.hwid} head={6} tail={4} />
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="ml-2 h-8 w-8"
+                              onClick={() => copyToClipboard(license.hwid!, 'HWID')}
+                            >
+                              <Copy className="h-4 w-4" />
+                              <span className="sr-only">复制HWID</span>
+                            </Button>
+                          </div>
+                          {license.deviceName && (
+                            <p className="text-xs text-muted-foreground">设备名：{license.deviceName}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-yellow-600">已启用HWID 绑定，客户端首次登录时自动绑定设备。</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">未启用HWID 绑定。</p>
+                  )}
+                </div>
+
+                {/* 用户自助换绑策略与次数管理 */}
+                {license?.hardwareBindingEnabled && (
+                  <div className="p-3 border rounded-lg bg-muted/20 space-y-2.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="h-4 w-4 text-primary" />
+                        <span className="text-xs font-semibold">用户自助换绑策略与额度</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {globalUnbindConfig.enabled ? (
+                          <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-200">
+                            全局换绑已开启
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs bg-muted text-muted-foreground">
+                            全局换绑已关闭
+                          </Badge>
+                        )}
+                        {license.allowSelfUnbind !== false ? (
+                          <Badge variant="default" className="text-xs">此卡允许换绑</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs text-destructive">此卡禁止换绑</Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                      <div className="p-2 border rounded bg-background">
+                        <div className="text-[11px] text-muted-foreground">当月已换绑</div>
+                        <div className="text-sm font-semibold mt-0.5">{license.monthlyUnbindCount || 0} 次</div>
+                      </div>
+                      <div className="p-2 border rounded bg-background">
+                        <div className="text-[11px] text-muted-foreground">额外赠送额度</div>
+                        <div className="text-sm font-semibold mt-0.5 text-primary">+{license.extraUnbindCount || 0} 次</div>
+                      </div>
+                      <div className="p-2 border rounded bg-background">
+                        <div className="text-[11px] text-muted-foreground">当月最大上限</div>
+                        <div className="text-sm font-semibold mt-0.5">
+                          {(globalUnbindConfig.maxPerMonth || 2) + (license.extraUnbindCount || 0)} 次/月
                         </div>
                       </div>
-                    ) : (
-                      <div>
-                        <p className="mb-2 text-yellow-600">此授权已启用硬件绑定，将在客户端首次登录时自动绑定设备。</p>
-                        <p className="text-muted-foreground">尚未绑定硬件设备。</p>
+                      <div className="p-2 border rounded bg-background">
+                        <div className="text-[11px] text-muted-foreground">当月剩余可用</div>
+                        <div className="text-sm font-semibold mt-0.5 text-green-600">
+                          {Math.max(0, (globalUnbindConfig.maxPerMonth || 2) + (license.extraUnbindCount || 0) - (license.monthlyUnbindCount || 0))} 次
+                        </div>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 flex-wrap gap-2">
+                      <div>
+                        上次解绑时间: {license.lastUnboundAt ? formatDate(license.lastUnboundAt) : '从未解绑'}
+                        {globalUnbindConfig.cooldownHours > 0 && ` (冷却: ${globalUnbindConfig.cooldownHours}h)`}
+                        {globalUnbindConfig.deductHours > 0 && ` (扣费: ${globalUnbindConfig.deductHours}h)`}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {license.extraUnbindCount && license.extraUnbindCount > 0 ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs text-destructive hover:bg-destructive/10"
+                            onClick={handleResetExtraUnbindCount}
+                            disabled={isUpdatingCount}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            清空额外额度
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setCountToAdd('1');
+                            setIsAddCountDialogOpen(true);
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          添加换绑次数
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-muted-foreground">未启用硬件绑定。</p>
                 )}
               </div>
             </CardContent>
@@ -720,19 +935,125 @@ export default function LicenseDetailsPage() {
             </CardFooter>
           </Card>
 
+          {/* HWID 绑定记录 */}
+          <Card>
+            <CardHeader
+              className="flex flex-row items-center justify-between pb-2 cursor-pointer select-none"
+              onClick={() => setIsHardwareHistoryOpen(!isHardwareHistoryOpen)}
+            >
+              <div>
+                <CardTitle className="text-xl">HWID 绑定记录</CardTitle>
+                <CardDescription>记录此卡密全生命周期绑定过的所有物理HWID指纹与活跃时间</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">
+                  共 {license?.hardwareHistories?.length || 0} 台设备
+                </Badge>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  {isHardwareHistoryOpen ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+            </CardHeader>
+            {isHardwareHistoryOpen && (
+              <CardContent>
+                {(!license?.hardwareHistories || license.hardwareHistories.length === 0) ? (
+                  <div className="py-6 text-center text-muted-foreground text-sm">
+                    暂无任何HWID 绑定历史记录
+                  </div>
+                ) : (
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+                          <th className="px-4 py-2 font-medium">HWID</th>
+                          <th className="px-4 py-2 font-medium">状态</th>
+                          <th className="px-4 py-2 font-medium">首次绑定时间</th>
+                          <th className="px-4 py-2 font-medium">最近活跃时间</th>
+                          <th className="px-4 py-2 font-medium text-right">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {license.hardwareHistories.map((hist) => {
+                          const isCurrent = hist.hwid === license.hwid;
+                          return (
+                            <tr key={hist.id} className="hover:bg-muted/30 transition-colors">
+                              <td className="px-4 py-2 font-mono text-xs max-w-[240px] truncate">
+                                <MaskedText value={hist.hwid} head={6} tail={4} />
+                              </td>
+                              <td className="px-4 py-2">
+                                <Badge
+                                  variant={isCurrent ? "default" : "secondary"}
+                                  className={isCurrent ? "bg-green-600 text-white hover:bg-green-700" : ""}
+                                >
+                                  {isCurrent ? "当前绑定" : "历史设备"}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-2 text-xs text-muted-foreground">
+                                {formatDate(hist.firstBoundAt)}
+                              </td>
+                              <td className="px-4 py-2 text-xs text-muted-foreground">
+                                {formatDate(hist.lastSeenAt)}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(hist.hwid, 'HWID');
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5 mr-1" />
+                                  复制 ID
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            )}
+          </Card>
+
           {license?.sessions && license.sessions.length > 0 && (
             <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">会话历史与活跃 Session</CardTitle>
-                <CardDescription>当前与该授权关联的全部会话历史记录</CardDescription>
+              <CardHeader
+                className="flex flex-row items-center justify-between pb-2 cursor-pointer select-none"
+                onClick={() => setIsSessionsOpen(!isSessionsOpen)}
+              >
+                <div>
+                  <CardTitle className="text-xl">会话历史</CardTitle>
+                  <CardDescription>当前与该授权关联的全部会话历史记录</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    共 {license.sessions.length} 条记录
+                  </Badge>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    {isSessionsOpen ? (
+                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent>
+              {isSessionsOpen && (
+                <CardContent>
                 <div className="rounded-md border">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="px-4 py-2 text-left font-medium">IP 地址</th>
-                        <th className="px-4 py-2 text-left font-medium">硬件 ID</th>
+                        <th className="px-4 py-2 text-left font-medium">HWID</th>
                         <th className="px-4 py-2 text-left font-medium">登录时间</th>
                         <th className="px-4 py-2 text-left font-medium">下线时间</th>
                         <th className="px-4 py-2 text-left font-medium">总在线时长</th>
@@ -748,7 +1069,7 @@ export default function LicenseDetailsPage() {
 	                        return (
 	                          <tr key={session.id} className="border-b last:border-0">
 	                            <td className="px-4 py-2 font-mono text-xs">{session.ipAddress || '-'}</td>
-	                            <td className="px-4 py-2 font-mono text-xs truncate max-w-[120px]">{session.hardwareId || '-'}</td>
+	                            <td className="px-4 py-2 font-mono text-xs truncate max-w-[120px]">{session.hwid || '-'}</td>
 	                            <td className="px-4 py-2 text-xs">{formatDate(session.createdAt)}</td>
 	                            <td className="px-4 py-2 text-xs">{session.terminatedAt ? formatDate(session.terminatedAt) : (isSessionActive ? '-' : formatDate(session.lastHeartbeat))}</td>
 	                            <td className="px-4 py-2 text-xs">{formatOnlineDuration(session.createdAt, session.terminatedAt, session.lastHeartbeat, isSessionActive)}</td>
@@ -782,19 +1103,69 @@ export default function LicenseDetailsPage() {
                   </table>
                 </div>
               </CardContent>
+            )}
             </Card>
           )}
         </div>
       )}
-      
+
       {license && (
-        <EditLicenseDialog 
+        <EditLicenseDialog
           open={isEditDialogOpen}
           onOpenChange={setIsEditDialogOpen}
           license={license}
           onLicenseUpdated={handleLicenseUpdated}
         />
       )}
+
+      {/* 手动添加换绑次数弹窗 */}
+      <Dialog open={isAddCountDialogOpen} onOpenChange={setIsAddCountDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>手动添加换绑次数</DialogTitle>
+            <DialogDescription>
+              为该卡密增加额外的自助解绑额度（可用于客服补偿或特殊放宽）。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-3">
+            <div className="grid gap-2">
+              <Label>增加次数</Label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={countToAdd}
+                onChange={(e) => setCountToAdd(e.target.value)}
+                disabled={isUpdatingCount}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                当前已有额外额度: +{license?.extraUnbindCount || 0} 次，添加后将变为 +{(license?.extraUnbindCount || 0) + (parseInt(countToAdd, 10) || 0)} 次。
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAddCountDialogOpen(false)}
+              disabled={isUpdatingCount}
+            >
+              取消
+            </Button>
+            <Button onClick={handleAddUnbindCount} disabled={isUpdatingCount}>
+              {isUpdatingCount ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  正在保存...
+                </>
+              ) : (
+                '确认添加'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

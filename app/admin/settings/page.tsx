@@ -13,6 +13,9 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
+import NotificationChannelsCard from '@/components/admin/notification-channels-card';
+import UnbindPolicyCard from '@/components/admin/unbind-policy-card';
+import SecurityDefenseCard from '@/components/admin/security-defense-card';
 
 const formSchema = z.object({
   heartbeat_interval: z.string().refine((val) => {
@@ -155,15 +158,28 @@ export default function SettingsPage() {
 
   return (
     <AdminLayout>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">系统设置</h1>
-      </div>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">系统设置</h1>
+          <p className="text-muted-foreground text-sm">
+            管理全局客户端参数、多通道告警推送、用户换绑策略及安全防重放规则。
+          </p>
+        </div>
 
-      <div className="max-w-2xl">
+        {/* 1. 多通道实时告警与推送 */}
+        <NotificationChannelsCard />
+
+        {/* 2. 用户自助换绑策略 */}
+        <UnbindPolicyCard />
+
+        {/* 3. 安全防护与防重放 */}
+        <SecurityDefenseCard />
+
+        {/* 4. 全局客户端与会话参数 */}
         <Card>
           <CardHeader>
-            <CardTitle>全局客户端与会话参数</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-base">全局客户端与会话参数</CardTitle>
+            <CardDescription className="text-xs">
               配置客户端激活和心跳检测相关的超时和频率参数。
             </CardDescription>
           </CardHeader>
@@ -175,54 +191,56 @@ export default function SettingsPage() {
               </div>
             ) : (
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                  <FormField
-                    control={form.control}
-                    name="heartbeat_interval"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>客户端心跳间隔 (秒)</FormLabel>
-                        <FormControl>
-                          <Input type="number" min="5" {...field} disabled={isSubmitting} />
-                        </FormControl>
-                        <FormDescription>
-                          客户端向服务器发送心跳包的默认间隔时间，更短的时间可以更快检测客户端状态，但会增加服务器请求负荷。
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="heartbeat_interval"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">客户端心跳间隔 (秒)</FormLabel>
+                          <FormControl>
+                            <Input type="number" min="5" {...field} disabled={isSubmitting} className="h-8 text-xs" />
+                          </FormControl>
+                          <FormDescription className="text-[10px]">
+                            客户端发送心跳包的默认间隔时间。
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                  <FormField
-                    control={form.control}
-                    name="session_timeout"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>会话离线超时阈值 (秒)</FormLabel>
-                        <FormControl>
-                          <Input type="number" min="10" {...field} disabled={isSubmitting} />
-                        </FormControl>
-                        <FormDescription>
-                          如果客户端在此时长内未发送心跳，系统将判定其已离线并清除其会话。该值必须大于心跳间隔时间（建议至少为心跳间隔的 2-3 倍）。
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                    <FormField
+                      control={form.control}
+                      name="session_timeout"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">会话离线超时阈值 (秒)</FormLabel>
+                          <FormControl>
+                            <Input type="number" min="10" {...field} disabled={isSubmitting} className="h-8 text-xs" />
+                          </FormControl>
+                          <FormDescription className="text-[10px]">
+                            判定客户端离线并清除会话的超时时间（须大于心跳间隔）。
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
                   <FormField
                     control={form.control}
                     name="enable_recaptcha"
                     render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
                         <div className="space-y-0.5 flex-1">
-                          <FormLabel className="text-base">登录验证码 (Turnstile)</FormLabel>
-                          <FormDescription>
+                          <FormLabel className="text-sm">登录验证码 (Turnstile)</FormLabel>
+                          <FormDescription className="text-xs">
                             启用后，管理员和用户登录界面将进行 Cloudflare Turnstile 验证。
                           </FormDescription>
                           {!hasTurnstileKeys && (
-                            <p className="text-sm text-destructive mt-2">
-                              ⚠ Turnstile 密钥未配置，请在 .env 中设置 NEXT_PUBLIC_TURNSTILE_SITE_KEY 和 TURNSTILE_SECRET_KEY 后重启容器。
+                            <p className="text-xs text-destructive mt-1">
+                              ⚠ Turnstile 密钥未配置，请在 .env 中设置 NEXT_PUBLIC_TURNSTILE_SITE_KEY 和 TURNSTILE_SECRET_KEY。
                             </p>
                           )}
                         </div>
@@ -237,17 +255,17 @@ export default function SettingsPage() {
                     )}
                   />
 
-                  <div className="flex justify-end pt-4">
-                    <Button type="submit" disabled={isSubmitting}>
+                  <div className="flex justify-end pt-2">
+                    <Button type="submit" size="sm" disabled={isSubmitting}>
                       {isSubmitting ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                           正在保存...
                         </>
                       ) : (
                         <>
-                          <Save className="mr-2 h-4 w-4" />
-                          保存设置
+                          <Save className="mr-1.5 h-3.5 w-3.5" />
+                          保存全局参数
                         </>
                       )}
                     </Button>

@@ -8,12 +8,16 @@ interface RateLimitEntry {
 
 const loginAttempts = new Map<string, RateLimitEntry>();
 const heartbeatAttempts = new Map<string, RateLimitEntry>();
+const verifyAttempts = new Map<string, RateLimitEntry>();
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
 
 const HEARTBEAT_WINDOW_MS = 60 * 1000;
 const HEARTBEAT_MAX_ATTEMPTS = 60;
+
+const VERIFY_WINDOW_MS = 60 * 1000;
+const VERIFY_MAX_ATTEMPTS = 30;
 
 function checkRateLimit(
   store: Map<string, RateLimitEntry>,
@@ -45,6 +49,26 @@ export function checkHeartbeatRateLimit(ip: string) {
   return checkRateLimit(heartbeatAttempts, `hb:${ip}`, HEARTBEAT_MAX_ATTEMPTS, HEARTBEAT_WINDOW_MS);
 }
 
+export function checkVerifyRateLimit(ip: string) {
+  return checkRateLimit(verifyAttempts, `verify:${ip}`, VERIFY_MAX_ATTEMPTS, VERIFY_WINDOW_MS);
+}
+
+export function createRateLimitResponse(resetInMs: number) {
+  const retryAfterSeconds = Math.max(1, Math.ceil(resetInMs / 1000));
+  return Response.json(
+    {
+      error: 'Too many requests, please try again later',
+      retryAfter: retryAfterSeconds,
+    },
+    {
+      status: 429,
+      headers: {
+        'Retry-After': retryAfterSeconds.toString(),
+      },
+    }
+  );
+}
+
 export function getClientIP(req: Request): string {
   const realIp = req.headers.get('x-real-ip');
   if (realIp) {
@@ -66,6 +90,9 @@ export function cleanupRateLimits() {
   }
   for (const [key, entry] of heartbeatAttempts) {
     if (now > entry.resetTime) heartbeatAttempts.delete(key);
+  }
+  for (const [key, entry] of verifyAttempts) {
+    if (now > entry.resetTime) verifyAttempts.delete(key);
   }
 }
 

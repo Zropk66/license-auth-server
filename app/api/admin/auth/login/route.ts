@@ -4,24 +4,30 @@ import { isValidTurnstileToken } from '@/lib/utils';
 import { signJWT } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { adminLoginSchema } from '@/lib/validations';
-import { checkLoginRateLimit, getClientIP } from '@/lib/rate-limit';
+import { checkLoginRateLimit, getClientIP, createRateLimitResponse } from '@/lib/rate-limit';
 import { logAction } from '@/lib/audit';
+import { isBlacklisted } from '@/lib/blacklist';
+import { sendAlert } from '@/lib/notification';
 
 export async function POST(req: NextRequest) {
   try {
-    // 速率限制：防止暴力破解
     const ip = getClientIP(req);
+
+    const blacklistCheck = await isBlacklisted(ip);
+    if (blacklistCheck.blacklisted) {
+      return NextResponse.json(
+        { error: 'Access denied: IP is blacklisted', reason: blacklistCheck.reason },
+        { status: 403 }
+      );
+    }
+
     const rateLimit = checkLoginRateLimit(ip);
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Too many login attempts. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000)) } }
-      );
+      return createRateLimitResponse(rateLimit.resetIn);
     }
 
     const body = await req.json();
 
-    // 使用 zod schema 验证请求体
     const parseResult = adminLoginSchema.safeParse(body);
     if (!parseResult.success) {
       return NextResponse.json(
@@ -31,7 +37,6 @@ export async function POST(req: NextRequest) {
     }
     const { username, password, turnstileToken, setupToken } = parseResult.data;
 
-    // 如果启用了验证码则进行校验
     const captchaSetting = await prisma.setting.findUnique({
       where: { key: 'enable_recaptcha' },
     });
@@ -145,11 +150,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 验证密码
     const isPasswordValid = await bcrypt.compare(password, admin.password);
 
     if (!isPasswordValid) {
-      // 审计日志：登录失败（密码错误）
       await logAction({
         adminId: admin.id,
         action: 'login_failed',
@@ -164,7 +167,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 创建 JWT
     const token = await signJWT({
       id: admin.id,
       username: admin.username,
@@ -172,7 +174,6 @@ export async function POST(req: NextRequest) {
       type: 'admin',
     });
 
-    // 审计日志：登录成功
     await logAction({
       adminId: admin.id,
       action: 'login_success',
@@ -180,6 +181,14 @@ export async function POST(req: NextRequest) {
       targetId: admin.id,
       details: { username, ip },
     });
+
+    sendAlert({
+      title: '🔑 管理员登录成功',
+      message: `管理员: ${admin.username}\n登录 IP: ${ip}\n时间: ${new Date().toLocaleString()}`,
+      level: 'info',
+      eventType: 'admin_login',
+      metadata: { adminId: admin.id, username: admin.username, ip },
+    }).catch(() => {});
 
     // 设置 cookie
     const response = NextResponse.json(

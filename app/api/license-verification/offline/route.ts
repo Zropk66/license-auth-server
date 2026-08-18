@@ -1,34 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptData, encryptData } from '@/lib/encryption';
 import prisma from '@/lib/prisma';
 
 export async function POST(req: NextRequest) {
   try {
-    const encryptedData = await req.text();
-
-    if (!encryptedData) {
-      return NextResponse.json(
-        { error: 'Missing encrypted data' },
-        { status: 400 }
-      );
-    }
-
-    let decryptedData: any;
+    let body: any;
     try {
-      decryptedData = decryptData(encryptedData);
-    } catch (error) {
+      body = await req.json();
+    } catch {
       return NextResponse.json(
-        { error: 'Invalid encrypted data' },
+        { error: 'Invalid JSON request body' },
         { status: 400 }
       );
     }
 
-    const { licenseKey, hardwareId, sessionId } = decryptedData;
+    const { licenseKey, hwid, sessionId } = body || {};
 
     if (!licenseKey) {
-      return encryptedResponse(
+      return NextResponse.json(
         { error: 'License key is required' },
-        400
+        { status: 400 }
       );
     }
 
@@ -36,15 +26,15 @@ export async function POST(req: NextRequest) {
       where: {
         id: sessionId || undefined,
         licenseKey,
-        hardwareId: hardwareId || null,
+        hwid: hwid || null,
         status: 'active',
       },
     });
 
     if (!session) {
-      return encryptedResponse(
+      return NextResponse.json(
         { error: 'Session not found or parameter mismatch' },
-        404
+        { status: 404 }
       );
     }
 
@@ -58,23 +48,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return encryptedResponse({ success: true, message: 'Offline reported successfully' });
+    return NextResponse.json({ success: true, message: 'Offline reported successfully' }, { status: 200 });
 
   } catch (error) {
     console.error('Offline report error:', error);
-    return encryptedResponse(
+    return NextResponse.json(
       { error: 'An unexpected error occurred' },
-      500
+      { status: 500 }
     );
   }
-}
-
-function encryptedResponse(data: any, status = 200) {
-  const encrypted = encryptData(data);
-  return new NextResponse(encrypted, {
-    status,
-    headers: {
-      'Content-Type': 'text/plain',
-    },
-  });
 }

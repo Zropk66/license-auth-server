@@ -1,44 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptData, encryptData } from '@/lib/encryption';
+import { signPayload } from '@/lib/crypto-sign';
 import prisma from '@/lib/prisma';
-import { checkHeartbeatRateLimit, getClientIP } from '@/lib/rate-limit';
+import { checkHeartbeatRateLimit, getClientIP, createRateLimitResponse } from '@/lib/rate-limit';
+import { isBlacklisted } from '@/lib/blacklist';
+import { validateNonce } from '@/lib/nonce';
 
 export async function POST(req: NextRequest) {
   try {
     const ip = getClientIP(req);
+
+    const ipCheck = await isBlacklisted(ip);
+    if (ipCheck.blacklisted) {
+      return NextResponse.json(
+        { error: 'Access denied: IP is blacklisted', reason: ipCheck.reason },
+        { status: 403 }
+      );
+    }
+
     const rateLimit = checkHeartbeatRateLimit(ip);
     if (!rateLimit.allowed) {
-      return encryptedResponse(
-        { error: 'Too many heartbeat requests. Please try again later.' },
-        429
-      );
+      return createRateLimitResponse(rateLimit.resetIn);
     }
 
-    const encryptedData = await req.text();
-
-    if (!encryptedData) {
-      return NextResponse.json(
-        { error: 'Missing encrypted data' },
-        { status: 400 }
-      );
-    }
-
-    let decryptedData: any;
+    let body: any;
     try {
-      decryptedData = decryptData(encryptedData);
-    } catch (error) {
+      body = await req.json();
+    } catch {
       return NextResponse.json(
-        { error: 'Invalid encrypted data' },
+        { error: 'Invalid JSON request body' },
         { status: 400 }
       );
     }
 
-    const { licenseKey, hardwareId, sessionId } = decryptedData;
+    const { licenseKey, hwid, sessionId, deviceName, nonce, timestamp } = body || {};
+
+    if (hwid) {
+      const hwCheck = await isBlacklisted(ip, hwid);
+      if (hwCheck.blacklisted) {
+        return NextResponse.json(
+          { error: 'Access denied: Hardware ID is blacklisted', reason: hwCheck.reason },
+          { status: 403 }
+        );
+      }
+    }
+
+    const nonceCheck = await validateNonce(nonce, timestamp);
+    if (!nonceCheck.valid) {
+      return NextResponse.json(
+        { error: 'Anti-replay validation failed', reason: nonceCheck.reason },
+        { status: 400 }
+      );
+    }
 
     if (!licenseKey) {
-      return encryptedResponse(
+      return NextResponse.json(
         { error: 'License key is required' },
-        400
+        { status: 400 }
       );
     }
 
@@ -49,52 +66,52 @@ export async function POST(req: NextRequest) {
     });
 
     if (!license) {
-      return encryptedResponse(
+      return NextResponse.json(
         {
           error: 'Invalid license key',
-          message: '许可证不存在或无效，请联系管理员确认。'
+          message: '许可证不存在或无效，请联系管理员确认。',
         },
-        404
+        { status: 404 }
       );
     }
 
-    if (license.status === "revoked") {
-      return encryptedResponse(
+    if (license.status === 'revoked') {
+      return NextResponse.json(
         {
           error: 'License has been revoked',
-          message: '您的许可证已被管理员吊销，当前授权已被停用。'
+          message: '您的许可证已被管理员吊销，当前授权已被停用。',
         },
-        403
+        { status: 403 }
       );
     }
 
-    if (license.status === "suspended") {
-      return encryptedResponse(
+    if (license.status === 'suspended') {
+      return NextResponse.json(
         {
           error: 'License has been suspended',
-          message: '您的许可证已被管理员暂停使用，请联系管理员。'
+          message: '您的许可证已被管理员暂停使用，请联系管理员。',
         },
-        403
+        { status: 403 }
       );
     }
 
     if (new Date(license.expirationDate) < new Date()) {
-      return encryptedResponse(
+      return NextResponse.json(
         {
           error: 'License has expired',
-          message: '您的许可证已过期，请及时续费后重新激活。'
+          message: '您的许可证已过期，请及时续费后重新激活。',
         },
-        403
+        { status: 403 }
       );
     }
 
-    if (license.hardwareBindingEnabled && license.hardwareId && license.hardwareId !== hardwareId) {
-      return encryptedResponse(
+    if (license.hardwareBindingEnabled && license.hwid && license.hwid !== hwid) {
+      return NextResponse.json(
         {
           error: 'License is bound to a different hardware ID',
-          message: '许可证已在另一台设备上绑定使用，当前设备无权访问。'
+          message: '许可证已在另一台设备上绑定使用，当前设备无权访问。',
         },
-        403
+        { status: 403 }
       );
     }
 
@@ -102,27 +119,27 @@ export async function POST(req: NextRequest) {
       where: {
         id: sessionId || undefined,
         licenseKey,
-        hardwareId: hardwareId || null,
+        hwid: hwid || null,
       },
     });
 
     if (!session) {
-      return encryptedResponse(
+      return NextResponse.json(
         {
           error: 'Session not found. Please re-verify.',
-          message: '您的客户端连接会话失效或参数不匹配。'
+          message: '您的客户端连接会话失效或参数不匹配。',
         },
-        401
+        { status: 401 }
       );
     }
 
     if (session.status !== 'active') {
-      return encryptedResponse(
+      return NextResponse.json(
         {
           error: 'Session is inactive. Please re-verify.',
-          message: '您的设备会话已失效或被管理员暂时停用。'
+          message: '您的设备会话已失效或被管理员重置/停用，请重新激活。',
         },
-        401
+        { status: 401 }
       );
     }
 
@@ -167,27 +184,44 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return encryptedResponse({
+    if (session.hwid) {
+      await prisma.licenseHardwareHistory.updateMany({
+        where: {
+          licenseKey: session.licenseKey,
+          hwid: session.hwid,
+        },
+        data: {
+          lastSeenAt: new Date(),
+          ...(deviceName ? { deviceName } : {}),
+        },
+      }).catch((err) => {
+        console.error('[HardwareHistory] heartbeat update failed:', err);
+      });
+
+      if (deviceName && license.hwid === hwid) {
+        await prisma.license.update({
+          where: { id: license.id },
+          data: { deviceName },
+        }).catch((err) => {
+          console.error('[License] deviceName update failed:', err);
+        });
+      }
+    }
+
+    const signedResponse = signPayload({
       status: updatedSession.status,
       sessionId: updatedSession.id,
       heartbeatInterval,
+      timestamp: Date.now(),
     });
+
+    return NextResponse.json(signedResponse, { status: 200 });
 
   } catch (error) {
     console.error('License heartbeat error:', error);
-    return encryptedResponse(
-      { error: 'An unexpected error occurred' },
-      500
+    return NextResponse.json(
+      { error: 'An unexpected error occurred', message: '服务器发生内部错误，请稍后再试。' },
+      { status: 500 }
     );
   }
-}
-
-function encryptedResponse(data: any, status = 200) {
-  const encrypted = encryptData(data);
-  return new NextResponse(encrypted, {
-    status,
-    headers: {
-      'Content-Type': 'text/plain',
-    },
-  });
 }

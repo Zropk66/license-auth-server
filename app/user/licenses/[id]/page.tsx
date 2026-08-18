@@ -7,9 +7,22 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Key, Copy, Calendar, Server } from 'lucide-react';
+import { ArrowLeft, Key, Copy, Calendar, Server, Smartphone, Loader2, Monitor, Clock, ShieldAlert } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
+
+interface UnbindStatus {
+  enabled: boolean;
+  allowSelfUnbind: boolean;
+  isBound: boolean;
+  maxPerMonth: number;
+  usedThisMonth: number;
+  remaining: number;
+  cooldownRemainingHours: number;
+  deductHours: number;
+  lastUnboundAt: string | null;
+}
 
 interface LicenseDetails {
   id: string;
@@ -17,13 +30,17 @@ interface LicenseDetails {
   softwareName: string;
   expirationDate: string;
   hardwareBindingEnabled: boolean;
-  hardwareId: string | null;
+  allowSelfUnbind?: boolean;
+  hwid: string | null;
+  deviceName?: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
   activatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  unbindStatus?: UnbindStatus | null;
+  usageMinutes?: number;
 }
 
 export default function UserLicenseDetailsPage() {
@@ -32,32 +49,75 @@ export default function UserLicenseDetailsPage() {
   const { toast } = useToast();
   const [license, setLicense] = useState<LicenseDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [unbinding, setUnbinding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [globalUnbindEnabled, setGlobalUnbindEnabled] = useState(false);
+
+  const fetchLicenseDetails = async () => {
+    setLoading(true);
+    try {
+      const [licenseRes, settingsRes] = await Promise.all([
+        fetch(`/api/user/licenses/${params.id}`),
+        fetch('/api/settings/public').catch(() => null),
+      ]);
+
+      if (!licenseRes.ok) {
+        throw new Error('获取授权详情失败');
+      }
+
+      const data = await licenseRes.json();
+      setLicense(data);
+
+      if (settingsRes && settingsRes.ok) {
+        const settingsData = await settingsRes.json();
+        setGlobalUnbindEnabled(!!settingsData.unbindEnabled);
+      }
+    } catch (err) {
+      console.error('Error fetching license details:', err);
+      setError('加载授权详情失败。请稍后再试。');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchLicenseDetails = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`/api/user/licenses/${params.id}`);
-
-        if (!response.ok) {
-          throw new Error('获取授权详情失败');
-        }
-
-        const data = await response.json();
-        setLicense(data);
-      } catch (err) {
-        console.error('Error fetching license details:', err);
-        setError('加载授权详情失败。请稍后再试。');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (params.id) {
       fetchLicenseDetails();
     }
   }, [params.id]);
+
+  const handleSelfUnbind = async () => {
+    if (!license) return;
+    if (!confirm('确定要自助解绑当前绑定的HWID设备吗？\n解绑后关联的在线会话将被强制下线，您可在新电脑上重新激活绑定。')) {
+      return;
+    }
+
+    setUnbinding(true);
+    try {
+      const res = await fetch(`/api/user/licenses/${license.id}/unbind`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || '解绑失败');
+      }
+
+      toast({
+        title: '解绑成功',
+        description: data.message || '已成功解除设备绑定，您可在新设备上登录激活',
+      });
+
+      setLicense((prev) => (prev ? { ...prev, hwid: null } : null));
+    } catch (err: any) {
+      toast({
+        title: '无法解绑',
+        description: err.message || '解绑失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setUnbinding(false);
+    }
+  };
 
   const copyToClipboard = (text: string, itemName: string) => {
     navigator.clipboard.writeText(text);
@@ -106,33 +166,23 @@ export default function UserLicenseDetailsPage() {
   const getLicenseDurationStats = () => {
     if (!license) return null;
     const now = new Date();
-    const created = new Date(license.createdAt);
     const expiry = new Date(license.expirationDate);
 
     let totalMins = 0;
-    let usedMins = 0;
 
     if (license.licenseType === 'duration') {
-      totalMins = license.duration || 0;
-      if (!license.activatedAt) {
-        usedMins = 0;
+      if (license.activatedAt) {
+        const actualMs = expiry.getTime() - new Date(license.activatedAt).getTime();
+        totalMins = Math.max(0, Math.round(actualMs / (1000 * 60)));
       } else {
-        const remainingMs = expiry.getTime() - now.getTime();
-        const remainingMins = Math.max(0, Math.round(remainingMs / (1000 * 60)));
-        usedMins = Math.max(0, totalMins - remainingMins);
+        totalMins = license.duration || 0;
       }
     } else {
-      const totalMs = expiry.getTime() - created.getTime();
+      const totalMs = expiry.getTime() - new Date(license.createdAt).getTime();
       totalMins = Math.max(0, Math.round(totalMs / (1000 * 60)));
-      if (now < created) {
-        usedMins = 0;
-      } else if (now > expiry) {
-        usedMins = totalMins;
-      } else {
-        const usedMs = now.getTime() - created.getTime();
-        usedMins = Math.max(0, Math.round(usedMs / (1000 * 60)));
-      }
     }
+
+    const usedMins = license.usageMinutes ?? 0;
 
     return {
       usedStr: formatDuration(usedMins),
@@ -201,11 +251,11 @@ export default function UserLicenseDetailsPage() {
                     {status.label}
                   </Badge>
                   <Badge
-                    variant={license?.hardwareBindingEnabled ? (license.hardwareId ? "default" : "secondary") : "outline"}
+                    variant={license?.hardwareBindingEnabled ? (license.hwid ? "default" : "secondary") : "outline"}
                   >
                     {license?.hardwareBindingEnabled
-                      ? (license.hardwareId ? "已绑定硬件" : "待绑定硬件")
-                      : "未绑定硬件"}
+                      ? (license.hwid ? "已绑定 HWID" : "待绑定 HWID")
+                      : "未绑定 HWID"}
                   </Badge>
                 </div>
               </div>
@@ -215,7 +265,7 @@ export default function UserLicenseDetailsPage() {
                 <h3 className="text-sm font-medium text-muted-foreground mb-1">授权密钥</h3>
                 <div className="flex items-center">
                   <code className="bg-muted px-2 py-1 rounded text-sm font-mono">
-                    {license?.licenseKey || '无'}
+                    <MaskedText value={license?.licenseKey || '无'} head={6} tail={4} />
                   </code>
                   <Button
                     variant="ghost"
@@ -283,13 +333,15 @@ export default function UserLicenseDetailsPage() {
                     <h3 className="text-sm font-medium text-muted-foreground mb-1">
                       <div className="flex items-center">
                         <Server className="h-4 w-4 mr-1" />
-                        硬件绑定
+                        HWID 绑定
                       </div>
                     </h3>
                     <p>
                       {license?.hardwareBindingEnabled
-                        ? (license.hardwareId ? "此授权已绑定至您的硬件" : "此授权已启用硬件绑定，将在客户端首次登录时绑定")
-                        : "未启用硬件绑定"}
+                        ? (license.hwid
+                          ? `已绑定至：${license.deviceName || '未知设备'}`
+                          : "此授权已启用 HWID 绑定，将在客户端首次登录时绑定")
+                        : "未启用 HWID 绑定"}
                     </p>
                   </div>
                 </div>
@@ -360,17 +412,73 @@ export default function UserLicenseDetailsPage() {
                 </div>
               </div>
 
-              {license?.hardwareBindingEnabled && license.hardwareId && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-1">硬件 ID</h3>
-                  <div className="flex items-center">
-                    <code className="bg-muted px-2 py-1 rounded text-xs font-mono break-all max-w-full">
-                      {license.hardwareId}
-                    </code>
+              {/* 设备绑定 */}
+              {license?.hardwareBindingEnabled && license.hwid && license.unbindStatus && license.unbindStatus.enabled && (
+                <div className="p-4 border rounded-lg bg-muted/20 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="text-sm font-medium">设备绑定</h3>
+                    </div>
+                    {globalUnbindEnabled && license.allowSelfUnbind !== false && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10 shrink-0"
+                        onClick={handleSelfUnbind}
+                        disabled={unbinding}
+                      >
+                        {unbinding ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Smartphone className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        自助解绑当前设备
+                      </Button>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    此授权已绑定至上方硬件。它只能在此设备上使用。
-                  </p>
+                  {license.deviceName && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Monitor className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">当前设备：</span>
+                      <span className="font-medium">{license.deviceName}</span>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">剩余换绑</span>
+                      <span className={`font-semibold ${license.unbindStatus.remaining > 0 ? 'text-green-600' : 'text-destructive'}`}>
+                        {license.unbindStatus.remaining}/{license.unbindStatus.maxPerMonth} 次
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">换绑冷却</span>
+                      <span className="font-semibold">
+                        {license.unbindStatus.cooldownRemainingHours > 0 ? (
+                          <span className="text-yellow-600">{license.unbindStatus.cooldownRemainingHours} 小时</span>
+                        ) : (
+                          <span className="text-green-600">无</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">上次换绑</span>
+                      <span className="font-semibold text-muted-foreground">
+                        {license.unbindStatus.lastUnboundAt ? formatDate(license.unbindStatus.lastUnboundAt) : '无'}
+                      </span>
+                    </div>
+                  </div>
+                  {license.unbindStatus.cooldownRemainingHours > 0 && (
+                    <p className="text-xs text-yellow-600 flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      换绑冷却中，请 {license.unbindStatus.cooldownRemainingHours} 小时后再试
+                    </p>
+                  )}
+                  {license.unbindStatus.deductHours > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      每次换绑将扣除 {license.unbindStatus.deductHours} 小时有效期
+                    </p>
+                  )}
                 </div>
               )}
 

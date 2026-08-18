@@ -20,6 +20,7 @@ export const createLicenseSchema = z.object({
   softwareName: z.string().min(1).max(200),
   expirationDate: z.string().optional(),
   hardwareBindingEnabled: z.boolean().optional(),
+  allowSelfUnbind: z.boolean().optional(),
   licenseType: z.enum(['fixed', 'duration']).default('fixed'),
   duration: z.number().int().positive().optional(),
 }).refine(
@@ -38,8 +39,12 @@ export const updateLicenseSchema = z.object({
   softwareName: z.string().min(1).max(200).optional(),
   expirationDate: z.string().optional(),
   hardwareBindingEnabled: z.boolean().optional(),
+  allowSelfUnbind: z.boolean().optional(),
+  extraUnbindCount: z.number().int().min(0).optional(),
+  addUnbindCount: z.number().int().optional(),
+  resetExtraUnbind: z.boolean().optional(),
   duration: z.number().int().positive().optional(),
-  resetHardwareId: z.boolean().optional(),
+  resethwid: z.boolean().optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'No fields to update' }
@@ -71,6 +76,14 @@ export const ALLOWED_SETTING_KEYS = [
   'enable_recaptcha',
   'session_timeout',
   'heartbeat_interval',
+  'unbind_enabled',
+  'unbind_default_allow',
+  'unbind_max_per_month',
+  'unbind_cooldown_hours',
+  'unbind_deduct_hours',
+  'security_enforce_nonce',
+  'security_nonce_tolerance_sec',
+  'security_auto_blacklist_threshold',
 ] as const;
 
 export const settingsUpdateSchema = z.object({

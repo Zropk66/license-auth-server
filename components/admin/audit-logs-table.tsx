@@ -29,7 +29,7 @@ const ACTION_MAP: Record<string, { label: string; variant: "default" | "secondar
   suspend_license: { label: "冻结授权", variant: "secondary" },
   resume_license: { label: "恢复授权", variant: "outline" },
   edit_license: { label: "编辑授权", variant: "outline" },
-  reset_hardware_id: { label: "重置硬件ID", variant: "secondary" },
+  reset_hwid: { label: "重置HWID", variant: "secondary" },
   delete_user: { label: "删除用户", variant: "destructive" },
   kick_session: { label: "踢出Session", variant: "destructive" },
 };

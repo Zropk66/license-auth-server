@@ -63,7 +63,7 @@ export default function Home() {
               </div>
               <h3 className="text-xl font-semibold mb-2">授权 API</h3>
               <p className="text-muted-foreground">
-                安全且加密的 API，用于授权验证，支持硬件 ID 绑定功能。
+                安全且加密的 API，用于授权验证，支持HWID 绑定功能。
               </p>
             </div>
           </section>

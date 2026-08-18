@@ -27,7 +27,10 @@ function mapLicense(license: LicenseWithRelations) {
     softwareName: license.softwareName,
     expirationDate: license.expirationDate,
     hardwareBindingEnabled: license.hardwareBindingEnabled,
-    hardwareId: license.hardwareId,
+    hwid: license.hwid,
+    allowSelfUnbind: license.allowSelfUnbind,
+    monthlyUnbindCount: license.monthlyUnbindCount,
+    extraUnbindCount: license.extraUnbindCount,
     status: license.status,
     licenseType: license.licenseType,
     duration: license.duration,
@@ -113,7 +116,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const { userId, softwareName, expirationDate, hardwareBindingEnabled, licenseType, duration } = parseResult.data;
+    const { userId, softwareName, expirationDate, hardwareBindingEnabled, allowSelfUnbind, licenseType, duration } = parseResult.data;
 
     // 验证用户是否存在
     const user = await prisma.user.findUnique({
@@ -146,6 +149,7 @@ export async function POST(req: NextRequest) {
             softwareName,
             expirationDate: resolvedExpirationDate,
             hardwareBindingEnabled: !!hardwareBindingEnabled,
+            allowSelfUnbind: allowSelfUnbind !== undefined ? allowSelfUnbind : true,
             status: resolvedStatus,
             licenseType,
             duration: isDuration ? duration! : null,
@@ -185,7 +189,7 @@ export async function POST(req: NextRequest) {
       softwareName: license.softwareName,
       expirationDate: license.expirationDate,
       hardwareBindingEnabled: license.hardwareBindingEnabled,
-      hardwareId: license.hardwareId,
+      hwid: license.hwid,
       status: license.status,
       licenseType: license.licenseType,
       duration: license.duration,

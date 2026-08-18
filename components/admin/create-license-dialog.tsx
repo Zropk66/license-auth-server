@@ -26,6 +26,7 @@ const formSchema = z.object({
   durationValue: z.coerce.number().int().positive('时长必须大于0').optional(),
   durationUnit: z.enum(['minutes', 'hours', 'days', 'weeks']).default('days'),
   hardwareBindingEnabled: z.boolean().default(false),
+  allowSelfUnbind: z.boolean().default(true),
 }).refine(data => {
   if (data.licenseType === 'fixed') {
     return !!data.expirationDate && data.expirationDate > new Date();
@@ -66,6 +67,8 @@ export default function CreateLicenseDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [globalUnbindEnabled, setGlobalUnbindEnabled] = useState(false);
+  const [globalDefaultAllow, setGlobalDefaultAllow] = useState(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -77,23 +80,40 @@ export default function CreateLicenseDialog({
       durationValue: 30,
       durationUnit: 'days',
       hardwareBindingEnabled: false,
+      allowSelfUnbind: false,
     },
   });
 
   const watchLicenseType = form.watch('licenseType');
-  
+  const watchHardwareBindingEnabled = form.watch('hardwareBindingEnabled');
+
   useEffect(() => {
     if (open) {
       fetchUsers();
+      fetchGlobalSettings();
     }
   }, [open]);
-  
+
+  const fetchGlobalSettings = async () => {
+    try {
+      const res = await fetch('/api/settings/public');
+      if (res.ok) {
+        const data = await res.json();
+        const isEnabled = !!data.unbindEnabled;
+        const defaultAllow = !!data.unbindDefaultAllow;
+        setGlobalUnbindEnabled(isEnabled);
+        setGlobalDefaultAllow(defaultAllow);
+        form.setValue('allowSelfUnbind', isEnabled && defaultAllow);
+      }
+    } catch {}
+  };
+
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
       const response = await fetch('/api/admin/users');
       const data = await response.json();
-      
+
       if (response.ok) {
         setUsers(data);
       } else {
@@ -120,6 +140,7 @@ export default function CreateLicenseDialog({
         softwareName: data.softwareName,
         licenseType: data.licenseType,
         hardwareBindingEnabled: data.hardwareBindingEnabled,
+        allowSelfUnbind: data.allowSelfUnbind,
       };
 
       if (data.licenseType === 'fixed') {
@@ -159,6 +180,7 @@ export default function CreateLicenseDialog({
         durationValue: 30,
         durationUnit: 'days',
         hardwareBindingEnabled: false,
+        allowSelfUnbind: globalUnbindEnabled && globalDefaultAllow,
       });
       onOpenChange(false);
       onLicenseCreated(result);
@@ -444,9 +466,9 @@ export default function CreateLicenseDialog({
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
-                    <FormLabel className="text-base">硬件绑定</FormLabel>
+                    <FormLabel className="text-base">HWID 绑定</FormLabel>
                     <FormDescription>
-                      启用后，授权将与特定的硬件 ID 绑定。
+                      启用后，授权将与特定的HWID 绑定。
                     </FormDescription>
                   </div>
                   <FormControl>
@@ -459,6 +481,36 @@ export default function CreateLicenseDialog({
                 </FormItem>
               )}
             />
+
+            {watchHardwareBindingEnabled && globalUnbindEnabled && (
+              <FormField
+                control={form.control}
+                name="allowSelfUnbind"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/20">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm font-medium">允许用户端自助换绑设备</FormLabel>
+                      <FormDescription className="text-xs">
+                        允许终端用户在个人控制台自助解绑（遵循系统月度限次与冷却时间策略）。
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {watchHardwareBindingEnabled && !globalUnbindEnabled && (
+              <div className="p-2.5 border rounded-lg bg-muted/20 text-xs text-muted-foreground">
+                提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密将严格执行一机一卡不可换绑。
+              </div>
+            )}
 
             <DialogFooter>
               <Button

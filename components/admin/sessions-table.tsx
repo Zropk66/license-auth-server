@@ -20,13 +20,14 @@ import { Loader2, Search, RefreshCcw, Activity, ShieldAlert } from 'lucide-react
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
+import { MaskedText } from '@/components/ui/masked-text';
 
 type Session = {
   id: string;
   licenseKey: string;
   username: string;
   softwareName: string;
-  hardwareId: string | null;
+  hwid: string | null;
   ipAddress: string | null;
   lastHeartbeat: string;
   status: string;
@@ -114,7 +115,7 @@ export default function SessionsTable() {
     session.licenseKey.toLowerCase().includes(search.toLowerCase()) ||
     session.softwareName.toLowerCase().includes(search.toLowerCase()) ||
     (session.ipAddress && session.ipAddress.toLowerCase().includes(search.toLowerCase())) ||
-    (session.hardwareId && session.hardwareId.toLowerCase().includes(search.toLowerCase()))
+    (session.hwid && session.hwid.toLowerCase().includes(search.toLowerCase()))
   );
 
   const formatDateTime = (dateStr: string) => {
@@ -215,7 +216,7 @@ export default function SessionsTable() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="搜索用户名、授权密钥、软件名称、IP或硬件ID..."
+                placeholder="搜索用户名、授权密钥、软件名称、IP或HWID..."
                 className="pl-8"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -232,7 +233,7 @@ export default function SessionsTable() {
                   <TableHead>授权密钥</TableHead>
                   <TableHead>软件名称</TableHead>
                   <TableHead>IP 地址</TableHead>
-                  <TableHead>硬件 ID</TableHead>
+                  <TableHead>HWID</TableHead>
                   <TableHead>会话状态</TableHead>
                   <TableHead>登录时间</TableHead>
                   <TableHead>下线时间</TableHead>
@@ -264,17 +265,17 @@ export default function SessionsTable() {
 
                     return (
                       <TableRow key={session.id}>
-                        <TableCell className="font-mono text-xs max-w-[100px] truncate" title={session.id}>
-                          {session.id}
+                        <TableCell className="font-mono text-xs max-w-[100px] truncate">
+                          <MaskedText value={session.id} head={6} tail={4} />
                         </TableCell>
                         <TableCell className="font-medium">{session.username}</TableCell>
-                        <TableCell className="font-mono text-xs max-w-[120px] truncate" title={session.licenseKey}>
-                          {session.licenseKey}
+                        <TableCell className="font-mono text-xs max-w-[120px] truncate">
+                          <MaskedText value={session.licenseKey} head={6} tail={4} />
                         </TableCell>
                         <TableCell>{session.softwareName}</TableCell>
                         <TableCell className="font-mono text-xs">{session.ipAddress || '-'}</TableCell>
-                        <TableCell className="font-mono text-xs max-w-[120px] truncate" title={session.hardwareId || undefined}>
-                          {session.hardwareId || '-'}
+                        <TableCell className="font-mono text-xs max-w-[120px] truncate">
+                          {session.hwid ? <MaskedText value={session.hwid} head={6} tail={4} /> : '-'}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={`${statusInfo.badgeClass} gap-1.5 px-2 py-0.5 font-medium text-xs flex items-center w-fit`}>

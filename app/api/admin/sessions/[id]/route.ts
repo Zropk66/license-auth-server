@@ -29,7 +29,7 @@ export async function DELETE(
       details: {
         licenseKey: session.licenseKey,
         ipAddress: session.ipAddress,
-        hardwareId: session.hardwareId,
+        hwid: session.hwid,
       },
     });
     return NextResponse.json({ success: true });

@@ -3,7 +3,7 @@ import { isValidTurnstileToken } from '@/lib/utils';
 import { signJWT } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { userLoginSchema } from '@/lib/validations';
-import { checkLoginRateLimit, getClientIP } from '@/lib/rate-limit';
+import { checkLoginRateLimit, getClientIP, createRateLimitResponse } from '@/lib/rate-limit';
 import { logAction } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
@@ -12,10 +12,7 @@ export async function POST(req: NextRequest) {
     const ip = getClientIP(req);
     const rateLimit = checkLoginRateLimit(ip);
     if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Too many login attempts. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil(rateLimit.resetIn / 1000)) } }
-      );
+      return createRateLimitResponse(rateLimit.resetIn);
     }
 
     const body = await req.json();

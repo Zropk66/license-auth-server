@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
           licenseKey: session.licenseKey,
           username: session.license.user.username,
           softwareName: session.license.softwareName,
-          hardwareId: session.hardwareId,
+          hwid: session.hwid,
           ipAddress: session.ipAddress,
           lastHeartbeat: session.lastHeartbeat,
           status: session.status,
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
         licenseKey: session.licenseKey,
         username: session.license.user.username,
         softwareName: session.license.softwareName,
-        hardwareId: session.hardwareId,
+        hwid: session.hwid,
         ipAddress: session.ipAddress,
         lastHeartbeat: session.lastHeartbeat,
         status: session.status,
@@ -194,7 +194,7 @@ export async function DELETE(req: NextRequest) {
       action: 'kick_session',
       targetType: 'session',
       targetId: sessionId,
-      details: { licenseKey: session.licenseKey, hardwareId: session.hardwareId },
+      details: { licenseKey: session.licenseKey, hwid: session.hwid },
     });
 
     return NextResponse.json({ success: true });

@@ -45,8 +45,10 @@ model License {
   userId                 String
   softwareName           String
   expirationDate         DateTime
-  hardwareId             String?
+  hwid                   String?
+  deviceName             String?
   hardwareBindingEnabled Boolean   @default(false)
+  allowSelfUnbind        Boolean   @default(true)
   status                 String    @default("active")
   licenseType            String    @default("fixed") // "fixed" or "duration"
   duration               Int?      // Duration in minutes
@@ -54,6 +56,11 @@ model License {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
   sessions               Session[]
+  hardwareHistories      LicenseHardwareHistory[]
+  lastUnboundAt          DateTime?
+  monthlyUnbindCount     Int       @default(0)
+  unbindCountMonth       String?
+  extraUnbindCount       Int       @default(0)
   createdById            String?
   createdBy              Admin?    @relation("LicenseCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -65,11 +72,71 @@ model License {
   @@index([createdById])
 }
 
+model Blacklist {
+  id        String    @id @default(cuid())
+  type      String    // "ip" | "hwid"
+  value     String    // 具体的 IP 地址 或 HWID
+  reason    String?   // 拉黑原因
+  isAuto    Boolean   @default(false)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([type, value])
+  @@index([type])
+  @@index([value])
+  @@index([expiresAt])
+}
+
+model NotificationChannel {
+  id        String   @id @default(cuid())
+  name      String   // 通道名称
+  type      String   // "bark" | "feishu" | "dingtalk" | "telegram" | "generic"
+  url       String   // 目标 URL 或 Bark Push 端点
+  secret    String?  // 密钥 / Key / Token
+  enabled   Boolean  @default(true)
+  events    String   @default("[\"all\"]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+model SoftwareVersion {
+  id           String   @id @default(cuid())
+  softwareName String
+  version      String
+  versionCode  Int
+  changelog    String
+  downloadUrl  String
+  fileHash     String?
+  isForced     Boolean  @default(false)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([softwareName, versionCode])
+  @@index([enabled])
+}
+
+model Announcement {
+  id           String   @id @default(cuid())
+  softwareName String   @default("ALL")
+  title        String
+  content      String
+  type         String   @default("info")
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([softwareName, enabled])
+}
+
 model Session {
   id            String   @id @default(cuid())
   licenseKey    String
   license       License  @relation(fields: [licenseKey], references: [licenseKey], onDelete: Cascade)
-  hardwareId    String?
+  hwid          String?
   ipAddress     String?
   lastHeartbeat DateTime @default(now())
   status        String   @default("active")
@@ -78,9 +145,24 @@ model Session {
   updatedAt     DateTime @updatedAt
 
   @@index([licenseKey])
-  @@index([licenseKey, hardwareId])
+  @@index([licenseKey, hwid])
   @@index([status, lastHeartbeat])
   @@index([ipAddress])
+}
+
+model LicenseHardwareHistory {
+  id           String   @id @default(cuid())
+  licenseKey   String
+  hwid         String
+  deviceName   String?
+  firstBoundAt DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  license      License  @relation(fields: [licenseKey], references: [licenseKey], onDelete: Cascade)
+
+  @@unique([licenseKey, hwid])
+  @@index([licenseKey])
+  @@index([hwid])
+  @@index([lastSeenAt])
 }
 
 model Setting {

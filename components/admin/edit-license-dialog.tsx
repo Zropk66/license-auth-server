@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -26,13 +27,22 @@ interface License {
   softwareName: string;
   expirationDate: string;
   hardwareBindingEnabled: boolean;
-  hardwareId: string | null;
+  allowSelfUnbind?: boolean;
+  monthlyUnbindCount?: number;
+  extraUnbindCount?: number;
+  hwid: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
   activatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  hardwareHistories?: {
+    id: string;
+    hwid: string;
+    firstBoundAt: string;
+    lastSeenAt: string;
+  }[];
 }
 
 const formSchema = z.object({
@@ -41,6 +51,7 @@ const formSchema = z.object({
   durationValue: z.coerce.number().int().positive('时长必须大于0').optional(),
   durationUnit: z.enum(['minutes', 'hours', 'days', 'weeks']).default('days'),
   hardwareBindingEnabled: z.boolean(),
+  allowSelfUnbind: z.boolean().default(true),
 }).refine(data => {
   // If it's a fixed license, or if it's already activated (which means it behaves like fixed on expirationDate modification)
   // we require expirationDate
@@ -72,7 +83,8 @@ export default function EditLicenseDialog({
 }: EditLicenseDialogProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isResettingHardware, setIsResettingHardware] = useState(false);
+  const [resetHardwareRequested, setResetHardwareRequested] = useState(false);
+  const [globalUnbindEnabled, setGlobalUnbindEnabled] = useState(false);
 
   const initialDuration = getInitialDuration(license.duration);
 
@@ -84,8 +96,37 @@ export default function EditLicenseDialog({
       durationValue: initialDuration.value,
       durationUnit: initialDuration.unit,
       hardwareBindingEnabled: license.hardwareBindingEnabled,
+      allowSelfUnbind: license.allowSelfUnbind !== undefined ? license.allowSelfUnbind : true,
     },
   });
+
+  const watchHardwareBindingEnabled = form.watch('hardwareBindingEnabled');
+
+  useEffect(() => {
+    if (open) {
+      setResetHardwareRequested(false);
+      fetchGlobalSettings();
+      const dur = getInitialDuration(license.duration);
+      form.reset({
+        softwareName: license.softwareName,
+        expirationDate: new Date(license.expirationDate),
+        durationValue: dur.value,
+        durationUnit: dur.unit,
+        hardwareBindingEnabled: license.hardwareBindingEnabled,
+        allowSelfUnbind: license.allowSelfUnbind !== undefined ? license.allowSelfUnbind : true,
+      });
+    }
+  }, [open, license, form]);
+
+  const fetchGlobalSettings = async () => {
+    try {
+      const res = await fetch('/api/settings/public');
+      if (res.ok) {
+        const data = await res.json();
+        setGlobalUnbindEnabled(!!data.unbindEnabled);
+      }
+    } catch {}
+  };
 
   const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
@@ -94,7 +135,12 @@ export default function EditLicenseDialog({
       const payload: any = {
         softwareName: data.softwareName,
         hardwareBindingEnabled: data.hardwareBindingEnabled,
+        allowSelfUnbind: data.allowSelfUnbind,
       };
+
+      if (resetHardwareRequested) {
+        payload.resethwid = true;
+      }
 
       const isUnactivatedDuration = license.status === 'unactivated' && license.licenseType === 'duration';
 
@@ -124,7 +170,9 @@ export default function EditLicenseDialog({
 
       toast({
         title: '授权已更新',
-        description: '已成功更新授权',
+        description: resetHardwareRequested
+          ? '已成功更新授权并重置HWID（关联活跃会话已强制下线）'
+          : '已成功更新授权',
       });
 
       onOpenChange(false);
@@ -137,44 +185,6 @@ export default function EditLicenseDialog({
       });
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const resetHardwareId = async () => {
-    if (!license.hardwareId) return;
-
-    setIsResettingHardware(true);
-    try {
-      const response = await fetch(`/api/admin/licenses/${license.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          resetHardwareId: true,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || '重置硬件 ID 失败');
-      }
-
-      toast({
-        title: '硬件 ID 已重置',
-        description: '已成功重置硬件 ID',
-      });
-
-      onLicenseUpdated(result);
-    } catch (error) {
-      toast({
-        title: '错误',
-        description: error instanceof Error ? error.message : '重置硬件 ID 失败',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsResettingHardware(false);
     }
   };
   
@@ -378,9 +388,9 @@ export default function EditLicenseDialog({
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
-                    <FormLabel className="text-base">硬件绑定</FormLabel>
+                    <FormLabel className="text-base">HWID 绑定</FormLabel>
                     <FormDescription>
-                      启用后，授权将与特定的硬件 ID 绑定。
+                      启用后，授权将与特定的HWID 绑定。
                     </FormDescription>
                   </div>
                   <FormControl>
@@ -394,35 +404,110 @@ export default function EditLicenseDialog({
               )}
             />
 
-            {license.hardwareBindingEnabled && license.hardwareId && (
-              <div className="p-3 border rounded-lg">
+            {watchHardwareBindingEnabled && globalUnbindEnabled && (
+              <FormField
+                control={form.control}
+                name="allowSelfUnbind"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/20">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm font-medium">允许用户端自助换绑设备</FormLabel>
+                      <FormDescription className="text-xs">
+                        允许终端用户在控制台自助解绑（遵循系统月度限次与冷却时间策略）。
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={isSubmitting}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {watchHardwareBindingEnabled && !globalUnbindEnabled && (
+              <div className="p-2.5 border rounded-lg bg-muted/20 text-xs text-muted-foreground">
+                提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密为一机一卡不可换绑。
+              </div>
+            )}
+
+            {license.hardwareBindingEnabled && license.hwid && (
+              <div className={cn(
+                "p-3 border rounded-lg transition-colors",
+                resetHardwareRequested ? "border-destructive/40 bg-destructive/5" : ""
+              )}>
                 <div className="flex justify-between items-center">
                   <div>
-                    <h4 className="text-sm font-medium">当前硬件 ID</h4>
+                    <h4 className="text-sm font-medium">当前HWID</h4>
                     <p className="text-xs text-muted-foreground mt-1">
-                      此授权目前已与特定硬件绑定。
+                      {resetHardwareRequested ? (
+                        <span className="text-destructive font-medium">已标记重置（点击“更新授权”后生效，当前活跃会话将被强制下线）</span>
+                      ) : (
+                        '此授权目前已与特定HWID 绑定。'
+                      )}
                     </p>
                   </div>
                   <Button
-                    variant="outline"
+                    type="button"
+                    variant={resetHardwareRequested ? "secondary" : "outline"}
                     size="sm"
-                    onClick={resetHardwareId}
-                    disabled={isResettingHardware || !license.hardwareId}
+                    onClick={() => setResetHardwareRequested(!resetHardwareRequested)}
+                    disabled={isSubmitting}
                   >
-                    {isResettingHardware ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        正在重置...
-                      </>
-                    ) : (
-                      '重置 ID'
-                    )}
+                    {resetHardwareRequested ? '撤销重置' : '重置 ID'}
                   </Button>
                 </div>
                 <div className="mt-2">
-                  <code className="text-xs bg-muted p-1 rounded break-all block">
-                    {license.hardwareId}
+                  <code className={cn(
+                    "text-xs p-1 rounded break-all block",
+                    resetHardwareRequested ? "bg-destructive/10 text-destructive line-through" : "bg-muted"
+                  )}>
+                    {license.hwid}
                   </code>
+                </div>
+              </div>
+            )}
+
+            {license.hardwareHistories && license.hardwareHistories.length > 0 && (
+              <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    HWID 绑定历史记录 ({license.hardwareHistories.length})
+                  </h4>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {license.hardwareHistories.map((hist) => {
+                    const isCurrent = !resetHardwareRequested && hist.hwid === license.hwid;
+                    return (
+                      <div
+                        key={hist.id}
+                        className="flex items-center justify-between text-xs p-2 rounded bg-background border"
+                      >
+                        <div className="flex flex-col gap-0.5 truncate mr-2">
+                          <code className="font-mono text-xs truncate max-w-[200px]" title={hist.hwid}>
+                            {hist.hwid}
+                          </code>
+                          <span className="text-[10px] text-muted-foreground">
+                            首次: {new Date(hist.firstBoundAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] text-muted-foreground">
+                            活跃: {new Date(hist.lastSeenAt).toLocaleDateString()}
+                          </span>
+                          <Badge
+                            variant={isCurrent ? "default" : "secondary"}
+                            className="text-[10px] px-1.5 py-0"
+                          >
+                            {isCurrent ? "当前绑定" : "历史设备"}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

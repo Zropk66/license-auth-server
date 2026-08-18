@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, Search, RefreshCcw, Copy, Key, Download } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import CreateLicenseDialog from './create-license-dialog';
 
@@ -19,7 +20,7 @@ type License = {
   softwareName: string;
   expirationDate: string;
   hardwareBindingEnabled: boolean;
-  hardwareId: string | null;
+  hwid: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -118,7 +119,7 @@ export default function LicensesTable() {
       return;
     }
 
-    const headers = ['授权密钥', '软件名称', '用户名', '创建者', '卡密类型', '状态', '硬件绑定启用', '绑定硬件ID', '创建时间', '到期时间'];
+    const headers = ['授权密钥', '软件名称', '用户名', '创建者', '卡密类型', '状态', 'HWID 绑定启用', '绑定HWID', '创建时间', '到期时间'];
     const rows = filteredLicenses.map(license => {
       const statusInfo = getLicenseStatus(license);
       const isDuration = license.licenseType === 'duration';
@@ -133,7 +134,7 @@ export default function LicensesTable() {
         durationStr,
         statusInfo.label,
         license.hardwareBindingEnabled ? '是' : '否',
-        license.hardwareId || '-',
+        license.hwid || '-',
         formatDate(license.createdAt),
         expirationStr
       ];
@@ -306,7 +307,7 @@ export default function LicensesTable() {
                   <TableHead>创建者</TableHead>
                   <TableHead>卡密类型</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>硬件绑定</TableHead>
+                  <TableHead>HWID 绑定</TableHead>
                   <TableHead className="w-[100px]">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -342,8 +343,8 @@ export default function LicensesTable() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
-                            <span className="text-xs sm:text-sm font-mono truncate max-w-[100px] sm:max-w-[120px]" title={license.licenseKey}>
-                              {license.licenseKey}
+                            <span className="text-xs sm:text-sm font-mono truncate max-w-[100px] sm:max-w-[120px]">
+                              <MaskedText value={license.licenseKey} head={6} tail={4} />
                             </span>
                             <Button
                               variant="ghost"
@@ -377,9 +378,9 @@ export default function LicensesTable() {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={license.hardwareBindingEnabled ? (license.hardwareId ? "default" : "secondary") : "outline"}
+                            variant={license.hardwareBindingEnabled ? (license.hwid ? "default" : "secondary") : "outline"}
                           >
-                            {license.hardwareBindingEnabled ? (license.hardwareId ? "已绑定" : "待绑定") : "已禁用"}
+                            {license.hardwareBindingEnabled ? (license.hwid ? "已绑定" : "待绑定") : "已禁用"}
                           </Badge>
                         </TableCell>
                         <TableCell>

@@ -9,12 +9,15 @@ import { Prisma } from '@prisma/client';
 type LicenseDetail = Prisma.LicenseGetPayload<{
   include: {
     user: { select: { id: true; username: true } };
+    hardwareHistories: {
+      orderBy: { lastSeenAt: 'desc' };
+    };
     sessions: {
       orderBy: { lastHeartbeat: 'desc' };
       select: {
         id: true;
         ipAddress: true;
-        hardwareId: true;
+        hwid: true;
         lastHeartbeat: true;
         status: true;
         createdAt: true;
@@ -34,7 +37,13 @@ function mapLicenseDetail(license: LicenseDetail) {
     softwareName: license.softwareName,
     expirationDate: license.expirationDate,
     hardwareBindingEnabled: license.hardwareBindingEnabled,
-    hardwareId: license.hardwareId,
+    hwid: license.hwid,
+    deviceName: license.deviceName,
+    allowSelfUnbind: license.allowSelfUnbind,
+    lastUnboundAt: license.lastUnboundAt,
+    monthlyUnbindCount: license.monthlyUnbindCount,
+    unbindCountMonth: license.unbindCountMonth,
+    extraUnbindCount: license.extraUnbindCount,
     status: license.status,
     licenseType: license.licenseType,
     duration: license.duration,
@@ -44,19 +53,24 @@ function mapLicenseDetail(license: LicenseDetail) {
     lastLoginIp: lastSession?.ipAddress ?? null,
     lastLoginAt: lastSession?.lastHeartbeat ?? null,
     sessions: license.sessions,
+    hardwareHistories: license.hardwareHistories,
   };
 }
 
 // include 配置常量
 const detailInclude = {
   user: { select: { id: true, username: true } },
+  hardwareHistories: {
+    orderBy: { lastSeenAt: 'desc' as const },
+  },
   sessions: {
     orderBy: { lastHeartbeat: 'desc' as const },
     select: {
       id: true,
       ipAddress: true,
-      hardwareId: true,
+      hwid: true,
       lastHeartbeat: true,
+      terminatedAt: true,
       status: true,
       createdAt: true,
     },
@@ -132,8 +146,12 @@ export async function PATCH(
       softwareName?: string;
       expirationDate?: Date;
       hardwareBindingEnabled?: boolean;
+      allowSelfUnbind?: boolean;
+      extraUnbindCount?: number;
+      unbindCountMonth?: string;
+      monthlyUnbindCount?: number;
       duration?: number | null;
-      hardwareId?: string | null;
+      hwid?: string | null;
       activatedAt?: Date;
     } = {};
 
@@ -164,12 +182,34 @@ export async function PATCH(
       // 确保转为 boolean
       dataToUpdate.hardwareBindingEnabled = Boolean(updateData.hardwareBindingEnabled);
     }
+    if (updateData.allowSelfUnbind !== undefined) {
+      dataToUpdate.allowSelfUnbind = Boolean(updateData.allowSelfUnbind);
+    }
+    if (updateData.resetExtraUnbind === true) {
+      dataToUpdate.extraUnbindCount = 0;
+    } else if (updateData.extraUnbindCount !== undefined) {
+      dataToUpdate.extraUnbindCount = updateData.extraUnbindCount;
+      const now = new Date();
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      if (license.unbindCountMonth !== currentMonthKey) {
+        dataToUpdate.unbindCountMonth = currentMonthKey;
+        dataToUpdate.monthlyUnbindCount = 0;
+      }
+    } else if (updateData.addUnbindCount !== undefined) {
+      dataToUpdate.extraUnbindCount = Math.max(0, (license.extraUnbindCount || 0) + updateData.addUnbindCount);
+      const now = new Date();
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      if (license.unbindCountMonth !== currentMonthKey) {
+        dataToUpdate.unbindCountMonth = currentMonthKey;
+        dataToUpdate.monthlyUnbindCount = 0;
+      }
+    }
     if (updateData.duration !== undefined) {
       dataToUpdate.duration = updateData.duration;
     }
-    // 处理硬件 ID 重置
-    if (updateData.resetHardwareId === true) {
-      dataToUpdate.hardwareId = null;
+    // 处理HWID 重置
+    if (updateData.resethwid === true) {
+      dataToUpdate.hwid = null;
     }
 
     // 确定审计日志的 action 类型
@@ -182,15 +222,34 @@ export async function PATCH(
       } else if (updateData.status === 'active' && license.status === 'suspended') {
         action = license.activatedAt === null ? 'resume_unactivated_license' : 'resume_license';
       }
-    } else if (updateData.resetHardwareId === true) {
-      action = 'reset_hardware_id';
+    } else if (updateData.resethwid === true) {
+      action = 'reset_hwid';
     }
 
     // 更新许可证
-    const updatedLicense = await prisma.license.update({
-      where: { id },
-      data: dataToUpdate,
-      include: detailInclude,
+    const updatedLicense = await prisma.$transaction(async (tx) => {
+      if (
+        updateData.resethwid === true ||
+        updateData.revoke === true ||
+        updateData.status === 'suspended'
+      ) {
+        await tx.session.updateMany({
+          where: {
+            licenseKey: license.licenseKey,
+            status: 'active',
+          },
+          data: {
+            status: 'terminated',
+            terminatedAt: new Date(),
+          },
+        });
+      }
+
+      return tx.license.update({
+        where: { id },
+        data: dataToUpdate,
+        include: detailInclude,
+      });
     });
 
     await logAction({

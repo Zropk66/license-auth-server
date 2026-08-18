@@ -28,19 +28,36 @@ export async function GET(
     const licenses = await prisma.license.findMany({
       where: { userId: id },
       orderBy: { createdAt: 'desc' },
+      include: {
+        sessions: {
+          select: {
+            createdAt: true,
+            lastHeartbeat: true,
+            terminatedAt: true,
+            status: true,
+          },
+        },
+      },
     });
 
+    const now = new Date();
     const processedLicenses = licenses.map(license => {
-      let durationMinutes: number;
-      if (license.licenseType === 'duration') {
-        durationMinutes = license.duration || 0;
-      } else {
-        const diffMs = new Date(license.expirationDate).getTime() - new Date(license.createdAt).getTime();
-        durationMinutes = Math.max(0, Math.floor(diffMs / (1000 * 60)));
-      }
+      const sessions = license.sessions ?? [];
+      let totalUsedMs = 0;
+      sessions.forEach(session => {
+        const sessionStart = new Date(session.createdAt).getTime();
+        const lastHb = new Date(session.lastHeartbeat).getTime();
+        const diffSeconds = Math.max(0, Math.floor((now.getTime() - lastHb) / 1000));
+        const isSessionActive = session.status === 'active' && diffSeconds <= 300;
+        const sessionEnd = session.terminatedAt
+          ? new Date(session.terminatedAt).getTime()
+          : (isSessionActive ? now.getTime() : lastHb);
+        totalUsedMs += Math.max(0, sessionEnd - sessionStart);
+      });
+      const usageMinutes = Math.round(totalUsedMs / (1000 * 60));
       return {
         ...license,
-        calculatedDuration: durationMinutes,
+        calculatedDuration: usageMinutes,
       };
     });
 

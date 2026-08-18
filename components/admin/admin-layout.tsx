@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, LayoutDashboard, Users, Key, Menu, LogOut, Moon, Sun, Activity, Settings, UserCog, ClipboardList } from 'lucide-react';
+import { ShieldCheck, LayoutDashboard, Users, Key, Menu, LogOut, Moon, Sun, Activity, Settings, UserCog, ClipboardList, ShieldAlert, Package, Megaphone } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -54,6 +54,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { name: '用户管理', href: '/admin/users', icon: Users },
     { name: '授权管理', href: '/admin/licenses', icon: Key },
     { name: '在线会话', href: '/admin/sessions', icon: Activity },
+    { name: '黑名单管理', href: '/admin/blacklist', icon: ShieldAlert },
+    { name: '版本管理', href: '/admin/software-versions', icon: Package },
+    { name: '系统公告', href: '/admin/announcements', icon: Megaphone },
     { name: '操作日志', href: '/admin/audit-logs', icon: ClipboardList },
     { name: '管理员管理', href: '/admin/managers', icon: UserCog },
     { name: '系统设置', href: '/admin/settings', icon: Settings },

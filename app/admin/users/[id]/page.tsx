@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, User, Copy, Key, Trash2, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 
 interface License {
@@ -28,7 +29,7 @@ interface License {
   softwareName: string;
   expirationDate: string;
   hardwareBindingEnabled: boolean;
-  hardwareId: string | null;
+  hwid: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -207,7 +208,7 @@ export default function UserDetailsPage() {
               </div>
 
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-1">授权总时长</h3>
+                <h3 className="text-sm font-medium text-muted-foreground mb-1">总时长</h3>
                 <p className="font-semibold text-primary">{user?.totalDuration ? formatDuration(user.totalDuration) : '-'}</p>
               </div>
             </CardContent>
@@ -272,7 +273,7 @@ export default function UserDetailsPage() {
                           <h4 className="font-medium">{license.softwareName}</h4>
                           <div className="flex items-center mt-1">
                             <code className="bg-muted px-2 py-1 rounded text-xs font-mono">
-                              {license.licenseKey}
+                              <MaskedText value={license.licenseKey} head={6} tail={4} />
                             </code>
                             <Button
                               variant="ghost"
@@ -300,11 +301,11 @@ export default function UserDetailsPage() {
                             </Badge>
                           )}
                           <Badge
-                            variant={license.hardwareBindingEnabled ? (license.hardwareId ? "default" : "secondary") : "outline"}
+                            variant={license.hardwareBindingEnabled ? (license.hwid ? "default" : "secondary") : "outline"}
                           >
                             {license.hardwareBindingEnabled
-                              ? (license.hardwareId ? "已绑定硬件" : "待绑定硬件")
-                              : "未启用硬件"}
+                              ? (license.hwid ? "已绑定 HWID" : "待绑定 HWID")
+                              : "未启用HWID"}
                           </Badge>
                         </div>
                       </div>
@@ -316,7 +317,7 @@ export default function UserDetailsPage() {
                             </span>
                           </p>
                           <p className="text-muted-foreground">
-                            卡密时长: <span className="font-medium text-foreground">
+                            使用时长: <span className="font-medium text-foreground">
                               {formatDuration(license.calculatedDuration)}
                             </span>
                           </p>

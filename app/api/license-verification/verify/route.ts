@@ -1,14 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptData, encryptData } from '@/lib/encryption';
+import { signPayload } from '@/lib/crypto-sign';
 import prisma from '@/lib/prisma';
-import { getClientIP } from '@/lib/rate-limit';
+import { getClientIP, checkVerifyRateLimit, createRateLimitResponse } from '@/lib/rate-limit';
+import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
+import { validateNonce } from '@/lib/nonce';
 
 export async function POST(req: NextRequest) {
-  // 使用统一的 getClientIP 获取客户端 IP
   const ipAddress = getClientIP(req);
 
   try {
-    // 检查是否因失败次数过多被封锁（最近 5 分钟内）
+    const ipBlacklistCheck = await isBlacklisted(ipAddress);
+    if (ipBlacklistCheck.blacklisted) {
+      return NextResponse.json(
+        { error: 'Access denied: IP is blacklisted', reason: ipBlacklistCheck.reason },
+        { status: 403 }
+      );
+    }
+
+    const verifyLimit = checkVerifyRateLimit(ipAddress);
+    if (!verifyLimit.allowed) {
+      await prisma.verificationAttempt.create({
+        data: {
+          ipAddress,
+          success: false,
+          reason: 'rate_limited',
+        },
+      });
+      recordSuspiciousActivity(ipAddress, 'rate_limit');
+      return createRateLimitResponse(verifyLimit.resetIn);
+    }
+
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     const failureCount = await prisma.verificationAttempt.count({
       where: {
@@ -26,42 +47,49 @@ export async function POST(req: NextRequest) {
           reason: 'blocked_due_to_rate_limit',
         },
       });
-      return encryptedResponse(
-        { error: 'Too many failed verification attempts. Please try again later.' },
-        429
-      );
-    }
-
-    // 从请求中获取加密的 payload
-    const encryptedData = await req.text();
-
-    if (!encryptedData) {
+      recordSuspiciousActivity(ipAddress, 'rate_limit');
       return NextResponse.json(
-        { error: 'Missing encrypted data' },
-        { status: 400 }
+        { error: 'Too many failed verification attempts. Please try again later.' },
+        { status: 429 }
       );
     }
 
-    // 解密数据
-    let decryptedData: any;
+    let body: any;
     try {
-      decryptedData = decryptData(encryptedData);
-    } catch (error) {
+      body = await req.json();
+    } catch {
       await prisma.verificationAttempt.create({
         data: {
           ipAddress,
           success: false,
-          reason: 'decryption_failed',
+          reason: 'invalid_json_body',
         },
       });
       return NextResponse.json(
-        { error: 'Invalid encrypted data' },
+        { error: 'Invalid JSON request body' },
         { status: 400 }
       );
     }
 
-    // 验证解密后的数据
-    const { licenseKey, hardwareId } = decryptedData;
+    const { licenseKey, hwid, deviceName, nonce, timestamp } = body || {};
+
+    if (hwid) {
+      const hwBlacklistCheck = await isBlacklisted(ipAddress, hwid);
+      if (hwBlacklistCheck.blacklisted) {
+        return NextResponse.json(
+          { error: 'Access denied: Hardware ID is blacklisted', reason: hwBlacklistCheck.reason },
+          { status: 403 }
+        );
+      }
+    }
+
+    const nonceCheck = await validateNonce(nonce, timestamp);
+    if (!nonceCheck.valid) {
+      return NextResponse.json(
+        { error: 'Anti-replay validation failed', reason: nonceCheck.reason },
+        { status: 400 }
+      );
+    }
 
     if (!licenseKey) {
       await prisma.verificationAttempt.create({
@@ -71,22 +99,17 @@ export async function POST(req: NextRequest) {
           reason: 'missing_license_key',
         },
       });
-      return encryptedResponse(
+      return NextResponse.json(
         { error: 'License key is required' },
-        400
+        { status: 400 }
       );
     }
 
-    // 查找许可证
     const license = await prisma.license.findUnique({
-      where: {
-        licenseKey,
-      },
+      where: { licenseKey },
       include: {
         user: {
-          select: {
-            username: true,
-          },
+          select: { username: true },
         },
       },
     });
@@ -100,14 +123,18 @@ export async function POST(req: NextRequest) {
           reason: 'invalid_license_key',
         },
       });
-      return encryptedResponse(
-        { error: 'Invalid license key' },
-        404
+      recordSuspiciousActivity(ipAddress, 'bruteforce', hwid);
+      return NextResponse.json(
+        {
+          error: 'Invalid license key',
+          message: '许可证不存在或无效，请联系管理员确认。',
+        },
+        { status: 404 }
       );
     }
 
     // 检查许可证是否被撤销
-    if (license.status === "revoked") {
+    if (license.status === 'revoked') {
       await prisma.verificationAttempt.create({
         data: {
           licenseKey,
@@ -116,17 +143,17 @@ export async function POST(req: NextRequest) {
           reason: 'license_revoked',
         },
       });
-      return encryptedResponse(
+      return NextResponse.json(
         {
           error: 'License has been revoked',
-          message: '您的许可证已被管理员撤销/吊销，授权已停用。'
+          message: '您的许可证已被管理员撤销/吊销，授权已停用。',
         },
-        403
+        { status: 403 }
       );
     }
 
     // 检查许可证是否被暂停
-    if (license.status === "suspended") {
+    if (license.status === 'suspended') {
       await prisma.verificationAttempt.create({
         data: {
           licenseKey,
@@ -135,16 +162,16 @@ export async function POST(req: NextRequest) {
           reason: 'license_suspended',
         },
       });
-      return encryptedResponse(
+      return NextResponse.json(
         {
           error: 'License has been suspended',
-          message: '您的许可证已被管理员暂停使用，请联系管理员。'
+          message: '您的许可证已被管理员暂停使用，请联系管理员。',
         },
-        403
+        { status: 403 }
       );
     }
 
-    // 如果是 duration 类型且尚未激活，则进行激活
+    // 处理时长卡激活与恢复
     let activeLicense = license;
     const now = new Date();
 
@@ -163,9 +190,7 @@ export async function POST(req: NextRequest) {
             data: { expirationDate: newExp },
             include: {
               user: {
-                select: {
-                  username: true,
-                },
+                select: { username: true },
               },
             },
           });
@@ -183,9 +208,7 @@ export async function POST(req: NextRequest) {
         },
         include: {
           user: {
-            select: {
-              username: true,
-            },
+            select: { username: true },
           },
         },
       });
@@ -201,92 +224,89 @@ export async function POST(req: NextRequest) {
           reason: 'license_expired',
         },
       });
-      return encryptedResponse(
-        { error: 'License has expired' },
-        403
+      return NextResponse.json(
+        {
+          error: 'License has expired',
+          message: '您的许可证已过期，请及时续费后重新激活。',
+        },
+        { status: 403 }
       );
     }
 
-    // 检查硬件绑定
+    // 检查HWID 绑定
     if (activeLicense.hardwareBindingEnabled) {
-      if (!hardwareId) {
+      if (!hwid) {
         await prisma.verificationAttempt.create({
           data: {
             licenseKey,
             ipAddress,
             success: false,
-            reason: 'hardware_id_required',
+            reason: 'hwid_required',
           },
         });
-        return encryptedResponse(
-          { error: 'Hardware ID is required for this license' },
-          400
+        return NextResponse.json(
+          {
+            error: 'Hardware ID is required for this license',
+            message: '此许可证已启用设备绑定，请求中未提供设备HWID。',
+          },
+          { status: 400 }
         );
       }
 
-      // 如果尚未绑定硬件 ID，则绑定当前硬件 ID
-      if (!activeLicense.hardwareId) {
+      // 如果尚未绑定HWID，则绑定当前HWID
+      if (!activeLicense.hwid) {
         activeLicense = await prisma.license.update({
-          where: {
-            id: activeLicense.id,
-          },
-          data: {
-            hardwareId,
-          },
+          where: { id: activeLicense.id },
+          data: { hwid, deviceName: deviceName || null },
           include: {
             user: {
-              select: {
-                username: true,
-              },
+              select: { username: true },
             },
           },
         });
-      }
-      // 否则检查硬件 ID 是否匹配
-      else if (activeLicense.hardwareId !== hardwareId) {
+      } else if (activeLicense.hwid !== hwid) {
         await prisma.verificationAttempt.create({
           data: {
             licenseKey,
             ipAddress,
             success: false,
-            reason: 'hardware_id_mismatch',
+            reason: 'hwid_mismatch',
           },
         });
-        return encryptedResponse(
-          { error: 'License is bound to a different hardware ID' },
-          403
+        return NextResponse.json(
+          {
+            error: 'License is bound to a different hardware ID',
+            message: '许可证已在另一台设备上绑定使用，当前设备无权访问。',
+          },
+          { status: 403 }
         );
       }
     }
 
-    // 创建新会话（保留所有历史会话）
-    // 在创建新会话前，先将该密钥及设备下的所有处于 active 状态 of 旧会话标记为 terminated，并以其最后活跃心跳时间作为下线时间
+    // 创建新会话：先将处于 active 状态的旧会话终止
     const session = await prisma.$transaction(async (tx) => {
-      // 找出当前所有处于活跃状态的旧会话
       const activeOldSessions = await tx.session.findMany({
         where: {
           licenseKey,
-          hardwareId: hardwareId || null,
+          hwid: hwid || null,
           status: 'active',
         },
       });
 
-      // 逐个更新它们的终止时间和状态
       for (const oldSession of activeOldSessions) {
         await tx.session.update({
           where: { id: oldSession.id },
           data: {
             status: 'terminated',
-            terminatedAt: oldSession.lastHeartbeat, // 最后一次心跳视为其下线时间
+            terminatedAt: oldSession.lastHeartbeat,
           },
         });
       }
 
-      // 创建全新的会话记录
       return tx.session.create({
         data: {
           licenseKey,
-          hardwareId: hardwareId || null,
+          hwid: hwid || null,
           ipAddress,
           status: 'active',
           lastHeartbeat: new Date(),
@@ -309,7 +329,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 验证成功后，清理该 IP 的旧 VerificationAttempt 记录（删除 1 小时前的记录）
+    // 成功后清理 1 小时前的记录
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     await prisma.verificationAttempt.deleteMany({
       where: {
@@ -318,8 +338,33 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 返回成功响应
-    return encryptedResponse({
+    // 记录HWID 绑定历史（无论是否首次绑定均维护活跃记录）
+    if (hwid) {
+      await prisma.licenseHardwareHistory.upsert({
+        where: {
+          licenseKey_hwid: {
+            licenseKey: activeLicense.licenseKey,
+            hwid,
+          },
+        },
+        create: {
+          licenseKey: activeLicense.licenseKey,
+          hwid,
+          deviceName: deviceName || null,
+          firstBoundAt: new Date(),
+          lastSeenAt: new Date(),
+        },
+        update: {
+          lastSeenAt: new Date(),
+          deviceName: deviceName || undefined,
+        },
+      }).catch((err) => {
+        console.error('[HardwareHistory] upsert failed in verify:', err);
+      });
+    }
+
+    // 组装授权数据并使用 Ed25519 私钥进行数字签名
+    const signedResponse = signPayload({
       valid: true,
       licenseKey: activeLicense.licenseKey,
       username: activeLicense.user.username,
@@ -329,7 +374,10 @@ export async function POST(req: NextRequest) {
       status: activeLicense.status,
       sessionId: session.id,
       heartbeatInterval,
+      timestamp: Date.now(),
     });
+
+    return NextResponse.json(signedResponse, { status: 200 });
 
   } catch (error) {
     console.error('License verification error:', error);
@@ -346,21 +394,9 @@ export async function POST(req: NextRequest) {
       console.error('Failed to log unexpected error attempt:', logErr);
     }
 
-    return encryptedResponse(
-      { error: 'An unexpected error occurred' },
-      500
+    return NextResponse.json(
+      { error: 'An unexpected error occurred', message: '服务器发生内部错误，请稍后再试。' },
+      { status: 500 }
     );
   }
-}
-
-// 辅助函数：加密并发送响应
-function encryptedResponse(data: any, status = 200) {
-  const encryptedResponse = encryptData(data);
-
-  return new NextResponse(encryptedResponse, {
-    status,
-    headers: {
-      'Content-Type': 'text/plain',
-    },
-  });
 }
