@@ -169,7 +169,7 @@ export async function sendToChannel(
       level: options?.level || 'info',
       eventType: options?.eventType || 'system',
       metadata: options?.metadata,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }),
     }),
   }).catch((err) => {
     console.error('[Notification] Generic Webhook push failed:', err);

@@ -150,7 +150,7 @@ export default function LicensesTable() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `licenses_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `licenses_export_${new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }).replace(/\//g, '')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

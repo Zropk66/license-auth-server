@@ -1,7 +1,7 @@
 """License Auth Server - Python 客户端 SDK 与接入示例.
 
 包含：
-1. 机器码 HWID 获取 (uuid.getnode)
+1. 机器码 HWID 获取 (真实硬件标识 + SHA-256)
 2. Nonce 随机数与毫秒时间戳生成
 3. /api/license-verification/verify 授权验证
 4. /api/license-verification/heartbeat 后台守护心跳线程
@@ -13,20 +13,26 @@ import os
 import platform
 import secrets
 import subprocess
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
-import uuid
 from typing import Any, Dict, Optional
 
 
 class LicenseClient:
+    # 无效硬件标识值（OEM 占位符 / 全零 / 空）
+    _HWID_INVALID = {
+        "", "none", "null", "default string", "to be filled by o.e.m.",
+        "00000000-0000-0000-0000-000000000000", "0", "system serial number",
+    }
+
     def __init__(self, server_url: str, license_key: str, software_name: str):
         self.server_url = server_url.rstrip("/")
         self.license_key = license_key
         self.software_name = software_name
-        self.hwid = self._generate_composite_hwid()
+        self.hwid = self._generate_hwid()
         self.device_name = self._get_device_name()
         self.session_id: Optional[str] = None
         self._stop_heartbeat = threading.Event()
@@ -34,7 +40,7 @@ class LicenseClient:
 
     def _get_command_output(self, cmd: str) -> str:
         try:
-            out = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=2)
+            out = subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=10)
             return out.decode("utf-8", errors="ignore").strip()
         except Exception:
             return ""
@@ -44,50 +50,55 @@ class LicenseClient:
         name = platform.node() or os.environ.get("COMPUTERNAME", "") or "Unknown"
         return name[:100]
 
-    def _generate_composite_hwid(self) -> str:
-        """HWID生成.
+    def _generate_hwid(self) -> str:
+        """采集真实硬件唯一标识，组合后 SHA-256 生成 HWID。
+
+        选取原则：用户不易更换 + 具备唯一性
+          - 主板 UUID (SMBIOS UUID)        — 主板级唯一，更换主板才会变
+          - 主板序列号 (BaseBoard Serial)   — 主板出厂序列号
+          - CPU ID (ProcessorId)           — 处理器唯一标识
+          - BIOS 序列号                     — 固件级标识
+        获取失败时直接报错退出，不使用任何随机降级
         """
         fingerprints = []
 
         if platform.system() == "Windows":
-            # 1. 主板系统 UUID (SMBIOS Type 1)
-            mb_uuid = self._get_command_output("wmic csproduct get uuid /value").replace("UUID=", "").strip()
-            fingerprints.append(f"MB_UUID:{mb_uuid or 'UNKNOWN_MB_UUID'}")
+            raw = subprocess.check_output(
+                ["powershell", "-NoProfile", "-Command",
+                 "$cs = Get-CimInstance Win32_ComputerSystemProduct; "
+                 "$bb = Get-CimInstance Win32_BaseBoard; "
+                 "$cpu = Get-CimInstance Win32_Processor; "
+                 "$bios = Get-CimInstance Win32_BIOS; "
+                 'Write-Output ($cs.UUID + "|" + $bb.SerialNumber + "|" + $cpu.ProcessorId + "|" + $bios.SerialNumber)'],
+                stderr=subprocess.DEVNULL, timeout=10,
+            ).decode("utf-8", errors="ignore").strip()
 
-            # 2. 主板出厂HWID (SMBIOS Type 2)
-            board_sn = self._get_command_output("wmic baseboard get serialnumber /value").replace("SerialNumber=", "").strip()
-            fingerprints.append(f"BOARD_SN:{board_sn or 'UNKNOWN_BOARD_SN'}")
-
-            # 3. CPU 物理处理器 ID
-            cpu_id = self._get_command_output("wmic cpu get processorid /value").replace("ProcessorId=", "").strip()
-            cpu_info = f"{cpu_id or platform.processor()}_{os.cpu_count()}"
-            fingerprints.append(f"CPU:{cpu_info}")
-
-            # 4. 主物理硬盘出厂HWID (Physical NVMe/SATA Controller Serial, 非逻辑卷标)
-            disk_sn = self._get_command_output("wmic diskdrive where 'Index=0' get serialnumber /value").replace("SerialNumber=", "").strip()
-            if not disk_sn:
-                disk_sn = self._get_command_output("wmic diskdrive get serialnumber /value").replace("SerialNumber=", "").strip().split("\n")[0]
-            fingerprints.append(f"DISK_HW_SN:{disk_sn or 'UNKNOWN_DISK_SN'}")
-
-            # 5. BIOS ROM 序列号
-            bios_sn = self._get_command_output("wmic bios get serialnumber /value").replace("SerialNumber=", "").strip()
-            fingerprints.append(f"BIOS_SN:{bios_sn or 'UNKNOWN_BIOS_SN'}")
+            for part in raw.split("|"):
+                part = part.strip()
+                if part and part.lower() not in self._HWID_INVALID:
+                    fingerprints.append(part)
         else:
-            # Linux 系统
-            dmi_uuid = self._get_command_output("cat /sys/class/dmi/id/product_uuid")
-            board_sn = self._get_command_output("cat /sys/class/dmi/id/board_serial")
-            bios_sn = self._get_command_output("cat /sys/class/dmi/id/bios_version")
+            for cmd in [
+                "cat /sys/class/dmi/id/product_uuid",
+                "cat /sys/class/dmi/id/board_serial",
+                "cat /sys/class/dmi/id/bios_version",
+            ]:
+                val = self._get_command_output(cmd)
+                if val and val.lower() not in self._HWID_INVALID:
+                    fingerprints.append(val)
+
             cpu_info = f"{platform.processor()}_{os.cpu_count()}"
+            if cpu_info and cpu_info.lower() not in self._HWID_INVALID:
+                fingerprints.append(cpu_info)
 
-            fingerprints.append(f"MB_UUID:{dmi_uuid or 'UNKNOWN_DMI'}")
-            fingerprints.append(f"BOARD_SN:{board_sn or 'UNKNOWN_BOARD'}")
-            fingerprints.append(f"CPU:{cpu_info}")
-            fingerprints.append(f"BIOS_SN:{bios_sn or 'UNKNOWN_BIOS'}")
+        if not fingerprints:
+            print("[致命错误] 无法获取任何有效硬件标识，程序终止。")
+            print("请检查系统是否支持 WMI/CIM 查询（Win32_ComputerSystemProduct / Win32_BaseBoard / Win32_Processor / Win32_BIOS）")
+            sys.exit(1)
 
-        # 汇总多HWID特征并进行 SHA-256 加密收敛
-        raw_composite = ";".join(fingerprints)
+        raw_composite = "|".join(fingerprints)
         sha256_hash = hashlib.sha256(raw_composite.encode("utf-8")).hexdigest().upper()
-        return f"HWID-PY-{sha256_hash[:32]}"
+        return f"HW-{sha256_hash}"
 
     def _generate_nonce(self) -> str:
         """生成随机 Nonce 防重放."""

@@ -2,7 +2,7 @@
  * License Auth Server - C++ 客户端接入与防逆向示例
  *
  * 包含：
- * 1. 机器码 (HWID) 生成
+ * 1. 机器码 (HWID) 生成 — 真实硬件标识 (WMI) + SHA-256 (Windows CNG)
  * 2. 毫秒级时间戳与 Nonce 防重放
  * 3. 授权验证 (/api/license-verification/verify) 与非对称签名本地校验 (Ed25519)
  * 4. 后台心跳守护线程 (/api/license-verification/heartbeat)
@@ -16,9 +16,26 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include <vector>
+#include <unordered_set>
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <windows.h>
+#include <bcrypt.h>
+
+#pragma comment(lib, "bcrypt.lib")
 
 // 如果使用 VMProtect，可包含 VMProtectSDK.h
 // #include <VMProtectSDK.h>
+
+namespace {
+    const std::unordered_set<std::string> HWID_INVALID = {
+        "", "none", "null", "default string", "to be filled by o.e.m.",
+        "00000000-0000-0000-0000-000000000000", "0", "system serial number",
+    };
+}
 
 class LicenseClient {
 private:
@@ -43,86 +60,141 @@ public:
     }
 
     /**
-     * 1. 严格选取【不易篡改、更换成本极高】的核心HWID生成唯一机器码 (HWID)
+     * 采集真实硬件唯一标识，组合后 SHA-256 生成 HWID。
      *
-     * 排除易变/低成本项：
-     * ❌ 排除 MAC 地址（插拔 Wi-Fi、开关 VPN/虚拟机即变，易被随机伪造）
-     * ❌ 排除 逻辑磁盘卷标/分区 ID（格式化/重装系统就会改变）
-     *
-     * 采纳高防/高成本HWID组合：
-     *  1. 主板物理全局唯一 UUID (Motherboard System UUID) - 更换主板相当于换整机，成本最高
-     *  2. 主板出厂HWID (BaseBoard Serial Number) - 出厂硬编码在电路板芯片
-     *  3. CPU 处理器架构与特征签名 (CPUID Processor Signature) - CPU 物理熔断特征，换 CPU 成本极高
-     *  4. 系统主固态/物理硬盘控制器出厂序列号 (Physical NVMe/SATA Controller Serial) - 格式化系统永不改变
-     *  5. BIOS ROM 固件序列号 (BIOS Serial) - 烧录于主板 SPI Flash 芯片
+     * 选取原则：用户不易更换 + 具备唯一性
+     *   - 主板 UUID (SMBIOS UUID)        — 主板级唯一，更换主板才会变
+     *   - 主板序列号 (BaseBoard Serial)   — 主板出厂序列号
+     *   - CPU ID (ProcessorId)           — 处理器唯一标识
+     *   - BIOS 序列号                     — 固件级标识
+     * 获取失败时直接报错退出，不使用任何随机降级
      */
     std::string generatehwid() {
-        std::stringstream ss;
+        std::string cmd = "powershell -NoProfile -Command \""
+            "$cs = Get-CimInstance Win32_ComputerSystemProduct; "
+            "$bb = Get-CimInstance Win32_BaseBoard; "
+            "$cpu = Get-CimInstance Win32_Processor; "
+            "$bios = Get-CimInstance Win32_BIOS; "
+            "Write-Output ($cs.UUID + '|' + $bb.SerialNumber + '|' + $cpu.ProcessorId + '|' + $bios.SerialNumber)"
+            "\"";
 
-        // [核心 1] 主板系统全局唯一 UUID (SMBIOS Type 1 System UUID)
-        ss << "MB_UUID:" << getMotherboardSystemUuid() << ";";
+        std::string raw = execCommand(cmd);
 
-        // [核心 2] 主板出厂HWID (SMBIOS Type 2 BaseBoard Serial)
-        ss << "BOARD_SN:" << getBaseboardSerial() << ";";
+        std::vector<std::string> parts;
+        size_t start = 0, end;
+        while ((end = raw.find('|', start)) != std::string::npos) {
+            std::string part = trim(raw.substr(start, end - start));
+            if (isValidHwidValue(part)) parts.push_back(part);
+            start = end + 1;
+        }
+        std::string last = trim(raw.substr(start));
+        if (isValidHwidValue(last)) parts.push_back(last);
 
-        // [核心 3] CPUID 物理特征签名与指令集掩码
-        ss << "CPUID:" << getCpuProcessorSignature() << ";";
+        if (parts.empty()) {
+            std::cerr << "[致命错误] 无法获取任何有效硬件标识，程序终止。" << std::endl;
+            std::cerr << "请检查系统是否支持 WMI 查询" << std::endl;
+            std::exit(1);
+        }
 
-        // [核心 4] 主物理硬盘控制器HWID (非分区卷标)
-        ss << "DISK_HW_SN:" << getPhysicalDiskControllerSerial() << ";";
+        std::string composite;
+        for (size_t i = 0; i < parts.size(); i++) {
+            if (i > 0) composite += "|";
+            composite += parts[i];
+        }
 
-        // [核心 5] BIOS ROM 芯片序列号
-        ss << "BIOS_SN:" << getBiosRomSerial();
-
-        // 统一计算 SHA-256 哈希
-        return "HWID-" + sha256(ss.str());
+        return "HW-" + sha256(composite);
     }
 
 private:
+    std::string execCommand(const std::string& cmd) {
+        FILE* pipe = _popen(cmd.c_str(), "r");
+        if (!pipe) return "";
+        std::string result;
+        char buffer[512];
+        while (fgets(buffer, sizeof(buffer), pipe)) {
+            result += buffer;
+        }
+        _pclose(pipe);
+        return trim(result);
+    }
+
+    static std::string trim(const std::string& s) {
+        size_t start = s.find_first_not_of(" \r\n\t");
+        if (start == std::string::npos) return "";
+        size_t end = s.find_last_not_of(" \r\n\t");
+        return s.substr(start, end - start + 1);
+    }
+
+    static std::string toLower(const std::string& s) {
+        std::string result = s;
+        std::transform(result.begin(), result.end(), result.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        return result;
+    }
+
+    static bool isValidHwidValue(const std::string& val) {
+        return !val.empty() && HWID_INVALID.find(toLower(val)) == HWID_INVALID.end();
+    }
+
     std::string getDeviceName() {
-        // Windows: GetComputerNameA(buf, &size)  #include <windows.h>
-        // Linux: gethostname(buf, sizeof(buf))  #include <unistd.h>
-        return "DESKTOP-DEVELOPER";
+        char buf[MAX_COMPUTERNAME_LENGTH + 1] = {0};
+        DWORD size = sizeof(buf);
+        if (GetComputerNameA(buf, &size)) {
+            return std::string(buf);
+        }
+        return "Unknown";
     }
 
-    std::string getMotherboardSystemUuid() {
-        // Windows: 获取 SMBIOS Type 1 UUID (例如通过 GetSystemFirmwareTable('RSMB'))
-        // Linux: 读取 /sys/class/dmi/id/product_uuid
-        return "4C4C4544-004B-4E10-8058-C3C04F343233";
-    }
-
-    std::string getBaseboardSerial() {
-        // Windows: WMI Win32_BaseBoard -> SerialNumber 或 SMBIOS Type 2
-        // 烧录于主板HWID中，更换主板成本等同于换电脑
-        return "/8HK3N42/CN12963876002A/";
-    }
-
-    std::string getCpuProcessorSignature() {
-        // 使用 CPUID 指令 (EAX=1) 获取 CPU 族、型号、步进与扩展特性掩码
-        return "BFEBFBFF000806EC";
-    }
-
-    std::string getPhysicalDiskControllerSerial() {
-        // 通过 DeviceIoControl (IOCTL_STORAGE_QUERY_PROPERTY / StorageDeviceProperty)
-        // 直接从 NVMe/SATA 硬盘控制器固件读取出厂唯一HWID（重装系统、分区格式化绝对不变）
-        return "NVME_SAMSUNG_MZVLB1T0HALR_S434NY0M123456";
-    }
-
-    std::string getBiosRomSerial() {
-        // SMBIOS Type 0 读取主板 SPI 芯片烧录的固件序列号
-        return "DELL_BIOS_SN_2.18.0";
-    }
-
+    /**
+     * 使用 Windows CNG (BCrypt) 计算真实 SHA-256 哈希。
+     */
     std::string sha256(const std::string& input) {
-        // 生产环境中引入 OpenSSL / mbedTLS / Windows CNG 计算 SHA-256
-        std::hash<std::string> hasher;
-        std::stringstream ss;
-        ss << std::hex << std::setfill('0') << std::setw(16) << hasher(input)
-           << std::setw(16) << hasher(input + "_SALT_SEC");
-        return ss.str();
+        BCRYPT_ALG_HANDLE hAlg = nullptr;
+        BCRYPT_HASH_HANDLE hHash = nullptr;
+        DWORD hashLen = 0, cbData = 0;
+        std::string result;
+
+        NTSTATUS status;
+
+        status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0);
+        if (status != 0) goto cleanup;
+
+        status = BCryptGetProperty(hAlg, BCRYPT_HASH_LENGTH,
+                                   reinterpret_cast<PUCHAR>(&hashLen), sizeof(hashLen), &cbData, 0);
+        if (status != 0) goto cleanup;
+
+        status = BCryptCreateHash(hAlg, &hHash, nullptr, 0, nullptr, 0, 0);
+        if (status != 0) goto cleanup;
+
+        status = BCryptHashData(hHash,
+                                reinterpret_cast<PUCHAR>(const_cast<char*>(input.c_str())),
+                                static_cast<ULONG>(input.length()), 0);
+        if (status != 0) goto cleanup;
+
+        {
+            std::vector<UCHAR> hash(hashLen);
+            status = BCryptFinishHash(hHash, hash.data(), hashLen, 0);
+            if (status == 0) {
+                std::stringstream ss;
+                for (DWORD i = 0; i < hashLen; i++) {
+                    ss << std::hex << std::uppercase << std::setfill('0') << std::setw(2)
+                       << static_cast<int>(hash[i]);
+                }
+                result = ss.str();
+            }
+        }
+
+    cleanup:
+        if (hHash) BCryptDestroyHash(hHash);
+        if (hAlg) BCryptCloseAlgorithmProvider(hAlg, 0);
+        if (result.empty()) {
+            std::cerr << "[致命错误] SHA-256 计算失败 (CNG 错误: " << status << ")，程序终止。" << std::endl;
+            std::exit(1);
+        }
+        return result;
     }
 
-    // 2. 生成随机 Nonce 字符串防重放
+    // 生成随机 Nonce 字符串防重放
     std::string generateNonce() {
         static const char charset[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         std::string result;
@@ -136,7 +208,8 @@ private:
         return result;
     }
 
-    // 3. 执行激活与授权验证
+public:
+    // 执行激活与授权验证
     bool verify() {
         // VMProtectBeginMutation("LicenseClient_Verify");
 
@@ -148,7 +221,8 @@ private:
         std::cout << "[Client] 正在向服务端发起授权验证..." << std::endl;
         std::cout << "  - LicenseKey: " << licenseKey << std::endl;
         std::cout << "  - Software: " << softwareName << std::endl;
-        std::cout << "  - hwid: " << hwid << std::endl;
+        std::cout << "  - HWID: " << hwid << std::endl;
+        std::cout << "  - DeviceName: " << deviceName << std::endl;
         std::cout << "  - Nonce: " << nonce << std::endl;
 
         // 构造 JSON 请求体：
@@ -175,7 +249,7 @@ private:
         return true;
     }
 
-    // 4. 后台心跳维持线程
+    // 后台心跳维持线程
     void startHeartbeat(int intervalSeconds) {
         isRunning = true;
         heartbeatThread = std::thread([this, intervalSeconds]() {
