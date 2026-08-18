@@ -272,3 +272,59 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await validateAdminAuth(req);
+  if (!('payload' in authResult)) {
+    return authResult;
+  }
+
+  try {
+    const { id } = await params;
+    const license = await prisma.license.findUnique({ where: { id } });
+
+    if (!license) {
+      return NextResponse.json(
+        { error: 'License not found' },
+        { status: 404 }
+      );
+    }
+
+    // 仅允许删除已撤销的许可证记录
+    if (license.status !== 'revoked') {
+      return NextResponse.json(
+        {
+          error: '仅允许删除已撤销的授权记录，请先撤销该授权后再删除',
+        },
+        { status: 400 }
+      );
+    }
+
+    // 删除许可证（Session 和 LicenseHardwareHistory 会自动级联删除）
+    await prisma.license.delete({
+      where: { id },
+    });
+
+    await logAction({
+      adminId: authResult.payload.id,
+      action: 'delete_license',
+      targetType: 'license',
+      targetId: id,
+      details: {
+        licenseKey: license.licenseKey,
+        softwareName: license.softwareName,
+      },
+    });
+
+    return NextResponse.json({ success: true, message: '授权记录已删除' });
+  } catch (error) {
+    console.error('Error deleting license:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete license' },
+      { status: 500 }
+    );
+  }
+}

@@ -119,7 +119,7 @@ export default function LicensesTable() {
       return;
     }
 
-    const headers = ['授权密钥', '软件名称', '用户名', '创建者', '卡密类型', '状态', 'HWID 绑定启用', '绑定HWID', '创建时间', '到期时间'];
+    const headers = ['授权密钥', '所属软件', '用户名', '创建者', '卡密类型', '状态', 'HWID 绑定启用', '绑定HWID', '创建时间', '到期时间'];
     const rows = filteredLicenses.map(license => {
       const statusInfo = getLicenseStatus(license);
       const isDuration = license.licenseType === 'duration';
@@ -249,7 +249,7 @@ export default function LicensesTable() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="搜索授权密钥、软件名或用户名..."
+                placeholder="搜索授权密钥、所属软件或用户名..."
                 className="pl-8"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -302,7 +302,7 @@ export default function LicensesTable() {
                     />
                   </TableHead>
                   <TableHead>授权密钥</TableHead>
-                  <TableHead>软件名称</TableHead>
+                  <TableHead>所属软件</TableHead>
                   <TableHead>用户名</TableHead>
                   <TableHead>创建者</TableHead>
                   <TableHead>卡密类型</TableHead>

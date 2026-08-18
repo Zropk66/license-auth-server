@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, LayoutDashboard, Users, Key, Menu, LogOut, Moon, Sun, Activity, Settings, UserCog, ClipboardList, ShieldAlert, Package, Megaphone } from 'lucide-react';
+import { ShieldCheck, LayoutDashboard, Users, Key, Menu, LogOut, Moon, Sun, Activity, Settings, UserCog, ClipboardList, ShieldAlert, Package, Megaphone, AppWindow } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -51,11 +51,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   const navigation = [
     { name: '仪表盘', href: '/admin/dashboard', icon: LayoutDashboard },
-    { name: '用户管理', href: '/admin/users', icon: Users },
+    { name: '软件管理', href: '/admin/softwares', icon: AppWindow },
     { name: '授权管理', href: '/admin/licenses', icon: Key },
+    { name: '用户管理', href: '/admin/users', icon: Users },
     { name: '在线会话', href: '/admin/sessions', icon: Activity },
-    { name: '黑名单管理', href: '/admin/blacklist', icon: ShieldAlert },
     { name: '版本管理', href: '/admin/software-versions', icon: Package },
+    { name: '黑名单管理', href: '/admin/blacklist', icon: ShieldAlert },
     { name: '系统公告', href: '/admin/announcements', icon: Megaphone },
     { name: '操作日志', href: '/admin/audit-logs', icon: ClipboardList },
     { name: '管理员管理', href: '/admin/managers', icon: UserCog },

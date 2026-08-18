@@ -122,7 +122,7 @@ export default function SoftwareVersionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>软件名称</TableHead>
+                    <TableHead>所属软件</TableHead>
                     <TableHead>版本号 (SemVer)</TableHead>
                     <TableHead>代码 (Code)</TableHead>
                     <TableHead>强制更新</TableHead>

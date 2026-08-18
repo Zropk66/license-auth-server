@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -45,6 +46,25 @@ export default function AddVersionDialog({
   const [isForced, setIsForced] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [softwareList, setSoftwareList] = useState<{ id: string; name: string }[]>([]);
+  const [loadingSoftwares, setLoadingSoftwares] = useState(false);
+
+  useEffect(() => {
+    const fetchSoftwares = async () => {
+      setLoadingSoftwares(true);
+      try {
+        const res = await fetch('/api/admin/softwares?enabledOnly=true');
+        if (res.ok) {
+          const data = await res.json();
+          setSoftwareList(data);
+        }
+      } catch {
+      } finally {
+        setLoadingSoftwares(false);
+      }
+    };
+    if (open) fetchSoftwares();
+  }, [open]);
 
   useEffect(() => {
     if (open) {
@@ -140,15 +160,29 @@ export default function AddVersionDialog({
           <div className="grid gap-3 py-4">
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1.5">
-                <Label className="text-xs">软件名称</Label>
-                <Input
-                  placeholder="例如: MyApp"
+                <Label className="text-xs">所属软件</Label>
+                <Select
                   value={softwareName}
-                  onChange={(e) => setSoftwareName(e.target.value)}
-                  disabled={isSubmitting}
-                  required
-                  className="h-8 text-xs"
-                />
+                  onValueChange={setSoftwareName}
+                  disabled={isSubmitting || loadingSoftwares}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder={loadingSoftwares ? "加载中..." : "请选择所属软件"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {softwareList.length === 0 ? (
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        暂无可用软件，请先前往「软件管理」添加
+                      </div>
+                    ) : (
+                      softwareList.map((sw) => (
+                        <SelectItem key={sw.id} value={sw.name}>
+                          {sw.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs">版本号 (SemVer)</Label>

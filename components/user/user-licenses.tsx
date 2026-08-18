@@ -117,7 +117,7 @@ export default function UserLicenses() {
             <TableHeader>
               <TableRow>
                 <TableHead>授权密钥</TableHead>
-                <TableHead>软件名称</TableHead>
+                <TableHead>所属软件</TableHead>
                 <TableHead>卡密类型</TableHead>
                 <TableHead>到期时间</TableHead>
                 <TableHead>状态</TableHead>

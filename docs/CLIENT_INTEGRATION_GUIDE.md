@@ -22,9 +22,9 @@
 
 | 接口 | 方法 | 请求载荷 | 响应格式 |
 | :--- | :--- | :--- | :--- |
-| **`/api/license-verification/verify`** | `POST` | `{"licenseKey": "...", "hardwareId": "..."}` | `{"data": {...}, "signature": "128位Hex"}` |
-| **`/api/license-verification/heartbeat`** | `POST` | `{"licenseKey": "...", "hardwareId": "...", "sessionId": "..."}` | `{"data": {...}, "signature": "128位Hex"}` |
-| **`/api/license-verification/offline`** | `POST` | `{"licenseKey": "...", "hardwareId": "...", "sessionId": "..."}` | `{"success": true, "message": "..."}` |
+| **`/api/license-verification/verify`** | `POST` | `{"licenseKey": "...", "softwareName": "...", "hwid": "...", "nonce": "...", "timestamp": 123}` | `{"data": {...}, "signature": "128位Hex"}` |
+| **`/api/license-verification/heartbeat`** | `POST` | `{"licenseKey": "...", "softwareName": "...", "hwid": "...", "sessionId": "...", "nonce": "...", "timestamp": 123}` | `{"data": {...}, "signature": "128位Hex"}` |
+| **`/api/license-verification/offline`** | `POST` | `{"licenseKey": "...", "hwid": "...", "sessionId": "..."}` | `{"success": true, "message": "..."}` |
 
 ---
 
@@ -35,8 +35,12 @@
 * **安全建议**：采集逻辑放入加壳保护区，防止被 Hook API 篡改。
 
 ### 第 2 步：首次激活验证
-1. 客户端向 `/api/license-verification/verify` 发送 `licenseKey` 与 `hardwareId`。
-2. 收到服务端回包：
+1. 客户端向 `/api/license-verification/verify` 发送 `licenseKey`、`softwareName`、`hwid`、`nonce` 和 `timestamp`。
+2. 服务端核验规则：
+   * 核验 `softwareName` 是否与该许可证绑定的软件名称完全一致，不一致则返回 403 明确提示；
+   * 核验 HWID 设备绑定、到期时间、黑名单与防重放 Nonce；
+   * 校验通过后生成会话 Session 并使用 Ed25519 签名下发。
+3. 收到服务端回包：
    * **若 HTTP 状态非 200**：提取 `message` 字段向用户展示错误原因。
    * **若 HTTP 200 成功**：
      1. 取出 `response.data` 并序列化为标准 JSON UTF-8 字节流。

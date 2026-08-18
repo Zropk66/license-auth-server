@@ -216,7 +216,7 @@ export default function SessionsTable() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="搜索用户名、授权密钥、软件名称、IP或HWID..."
+                placeholder="搜索用户名、授权密钥、所属软件、IP或HWID..."
                 className="pl-8"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -231,7 +231,7 @@ export default function SessionsTable() {
                   <TableHead>会话 ID</TableHead>
                   <TableHead>用户名</TableHead>
                   <TableHead>授权密钥</TableHead>
-                  <TableHead>软件名称</TableHead>
+                  <TableHead>所属软件</TableHead>
                   <TableHead>IP 地址</TableHead>
                   <TableHead>HWID</TableHead>
                   <TableHead>会话状态</TableHead>

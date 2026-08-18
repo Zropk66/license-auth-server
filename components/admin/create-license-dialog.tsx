@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 
 const formSchema = z.object({
   userId: z.string().min(1, '请选择用户'),
-  softwareName: z.string().min(3, '软件名称至少需要3个字符'),
+  softwareName: z.string().min(1, '请选择所属软件'),
   licenseType: z.enum(['fixed', 'duration']).default('fixed'),
   expirationDate: z.date().optional(),
   durationValue: z.coerce.number().int().positive('时长必须大于0').optional(),
@@ -52,6 +52,13 @@ interface User {
   username: string;
 }
 
+interface SoftwareOption {
+  id: string;
+  name: string;
+  code?: string | null;
+  enabled: boolean;
+}
+
 interface CreateLicenseDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -67,6 +74,8 @@ export default function CreateLicenseDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [softwares, setSoftwares] = useState<SoftwareOption[]>([]);
+  const [loadingSoftwares, setLoadingSoftwares] = useState(false);
   const [globalUnbindEnabled, setGlobalUnbindEnabled] = useState(false);
   const [globalDefaultAllow, setGlobalDefaultAllow] = useState(false);
 
@@ -90,9 +99,28 @@ export default function CreateLicenseDialog({
   useEffect(() => {
     if (open) {
       fetchUsers();
+      fetchSoftwares();
       fetchGlobalSettings();
     }
   }, [open]);
+
+  const fetchSoftwares = async () => {
+    setLoadingSoftwares(true);
+    try {
+      const response = await fetch('/api/admin/softwares?enabledOnly=true');
+      const data = await response.json();
+      if (response.ok && Array.isArray(data)) {
+        setSoftwares(data);
+        if (data.length > 0 && !form.getValues('softwareName')) {
+          form.setValue('softwareName', data[0].name);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching softwares:', error);
+    } finally {
+      setLoadingSoftwares(false);
+    }
+  };
 
   const fetchGlobalSettings = async () => {
     try {
@@ -252,10 +280,36 @@ export default function CreateLicenseDialog({
               name="softwareName"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>软件名称</FormLabel>
-                  <FormControl>
-                    <Input placeholder="请输入软件名称" {...field} disabled={isSubmitting} />
-                  </FormControl>
+                  <FormLabel>所属软件</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value}
+                    disabled={isSubmitting || loadingSoftwares}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder={loadingSoftwares ? "正在加载所属软件..." : "请选择所属软件"} />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {loadingSoftwares ? (
+                        <div className="flex items-center justify-center p-2 text-xs">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          正在加载软件列表...
+                        </div>
+                      ) : softwares.length === 0 ? (
+                        <div className="p-2 text-center text-xs text-muted-foreground">
+                          暂无可用所属软件，请先前往「软件管理」添加
+                        </div>
+                      ) : (
+                        softwares.map((sw) => (
+                          <SelectItem key={sw.id} value={sw.name}>
+                            {sw.name} {sw.code ? `(${sw.code})` : ''}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

@@ -116,13 +116,14 @@ class LicenseClient:
 
         payload = {
             "licenseKey": self.license_key,
+            "softwareName": self.software_name,
             "hwid": self.hwid,
             "deviceName": self.device_name,
             "nonce": nonce,
             "timestamp": timestamp,
         }
 
-        print(f"[Client] 发起授权验证: key={self.license_key}, hwid={self.hwid}")
+        print(f"[Client] 发起授权验证: key={self.license_key}, software={self.software_name}, hwid={self.hwid}")
         try:
             res = self._post_json("/api/license-verification/verify", payload)
             if "data" in res and "sessionId" in res["data"]:
@@ -145,6 +146,7 @@ class LicenseClient:
                 try:
                     payload = {
                         "licenseKey": self.license_key,
+                        "softwareName": self.software_name,
                         "hwid": self.hwid,
                         "sessionId": self.session_id,
                         "deviceName": self.device_name,

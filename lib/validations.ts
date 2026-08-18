@@ -55,6 +55,25 @@ export const createUserSchema = z.object({
   username: z.string().min(1, 'Username is required').max(100),
 });
 
+// Software creation
+export const createSoftwareSchema = z.object({
+  name: z.string().min(1, '软件名称不能为空').max(100, '软件名称不能超过100个字符'),
+  code: z.string().max(50).optional().nullable(),
+  description: z.string().max(500).optional().nullable(),
+  enabled: z.boolean().default(true),
+});
+
+// Software update
+export const updateSoftwareSchema = z.object({
+  name: z.string().min(1, '软件名称不能为空').max(100, '软件名称不能超过100个字符').optional(),
+  code: z.string().max(50).optional().nullable(),
+  description: z.string().max(500).optional().nullable(),
+  enabled: z.boolean().optional(),
+}).refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'No fields to update' }
+);
+
 // Manager creation
 export const createManagerSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(100),

@@ -84,6 +84,7 @@ export default function LicenseDetailsPage() {
   const [isRevoking, setIsRevoking] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [kickingSessionId, setKickingSessionId] = useState<string | null>(null);
   const [globalUnbindConfig, setGlobalUnbindConfig] = useState<{
@@ -470,6 +471,35 @@ export default function LicenseDetailsPage() {
     setLicense(updatedLicense);
   };
 
+  const deleteLicense = async () => {
+    if (!license) return;
+    if (!confirm(`确定要永久删除此已撤销的授权记录吗？\n\n密钥：${license.licenseKey}\n此操作不可恢复，将同时删除关联的会话和硬件绑定历史。`)) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/admin/licenses/${license.id}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || '删除失败');
+      }
+      toast({
+        title: '删除成功',
+        description: data.message || '授权记录已永久删除',
+      });
+      router.push('/admin/licenses');
+    } catch (error) {
+      toast({
+        title: '错误',
+        description: error instanceof Error ? error.message : '删除授权记录失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const kickSession = async (sessionId: string) => {
     setKickingSessionId(sessionId);
     try {
@@ -587,7 +617,7 @@ export default function LicenseDetailsPage() {
                 {/* 左栏：基础信息 */}
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-1">软件名称</h3>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-1">所属软件</h3>
                     <p>{license?.softwareName || '无'}</p>
                   </div>
 
@@ -926,6 +956,44 @@ export default function LicenseDetailsPage() {
                           ) : (
                             '撤销授权'
                           )}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+
+                {license?.status === "revoked" && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" disabled={isDeleting}>
+                        {isDeleting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            正在删除...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            删除记录
+                          </>
+                        )}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>永久删除授权记录</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          确定要永久删除此已撤销的授权记录吗？此操作不可恢复，将同时删除关联的会话和硬件绑定历史。
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={deleteLicense}
+                          disabled={isDeleting}
+                        >
+                          确认删除
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>

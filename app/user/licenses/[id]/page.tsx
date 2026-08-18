@@ -243,7 +243,7 @@ export default function UserLicenseDetailsPage() {
                     {license?.softwareName || '授权详情'}
                   </CardTitle>
                   <CardDescription>
-                    您购买的授权：{license?.softwareName}
+                    所属软件：{license?.softwareName}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -301,7 +301,7 @@ export default function UserLicenseDetailsPage() {
                 {/* 左栏：基础信息 */}
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-sm font-medium text-muted-foreground mb-1">软件名称</h3>
+                    <h3 className="text-sm font-medium text-muted-foreground mb-1">所属软件</h3>
                     <p>{license?.softwareName || '无'}</p>
                   </div>
 

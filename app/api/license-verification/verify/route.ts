@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { licenseKey, hwid, deviceName, nonce, timestamp } = body || {};
+    const { licenseKey, hwid, deviceName, nonce, timestamp, softwareName } = body || {};
 
     if (hwid) {
       const hwBlacklistCheck = await isBlacklisted(ipAddress, hwid);
@@ -87,6 +87,24 @@ export async function POST(req: NextRequest) {
     if (!nonceCheck.valid) {
       return NextResponse.json(
         { error: 'Anti-replay validation failed', reason: nonceCheck.reason },
+        { status: 400 }
+      );
+    }
+
+    if (!softwareName) {
+      await prisma.verificationAttempt.create({
+        data: {
+          licenseKey: licenseKey || null,
+          ipAddress,
+          success: false,
+          reason: 'missing_software_name',
+        },
+      });
+      return NextResponse.json(
+        {
+          error: 'Software name is required',
+          message: '请求中未提供软件标识 (softwareName)。',
+        },
         { status: 400 }
       );
     }
@@ -130,6 +148,47 @@ export async function POST(req: NextRequest) {
           message: '许可证不存在或无效，请联系管理员确认。',
         },
         { status: 404 }
+      );
+    }
+
+    // 检查软件标识是否匹配
+    if (license.softwareName !== softwareName) {
+      await prisma.verificationAttempt.create({
+        data: {
+          licenseKey,
+          ipAddress,
+          success: false,
+          reason: 'software_mismatch',
+        },
+      });
+      return NextResponse.json(
+        {
+          error: 'Software name mismatch',
+          message: `许可证软件不匹配：该授权仅适用于「${license.softwareName}」。`,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 检查所属软件是否处于启用状态
+    const boundSoftware = await prisma.software.findUnique({
+      where: { name: license.softwareName },
+    });
+    if (boundSoftware && !boundSoftware.enabled) {
+      await prisma.verificationAttempt.create({
+        data: {
+          licenseKey,
+          ipAddress,
+          success: false,
+          reason: 'software_disabled',
+        },
+      });
+      return NextResponse.json(
+        {
+          error: 'Software is disabled',
+          message: `所属软件「${license.softwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
+        },
+        { status: 403 }
       );
     }
 

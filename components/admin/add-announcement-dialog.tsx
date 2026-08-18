@@ -126,15 +126,15 @@ export default function AddAnnouncementDialog({
           <div className="grid gap-3 py-4">
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1.5">
-                <Label className="text-xs">目标软件名称</Label>
+                <Label className="text-xs">目标所属软件</Label>
                 <Input
-                  placeholder="填写 ALL 或指定软件"
+                  placeholder="填写 ALL 或指定所属软件"
                   value={softwareName}
                   onChange={(e) => setSoftwareName(e.target.value)}
                   disabled={isSubmitting}
                   className="h-8 text-xs"
                 />
-                <p className="text-[10px] text-muted-foreground">ALL 为全部软件下发</p>
+                <p className="text-[10px] text-muted-foreground">ALL 为全部软件通用下发</p>
               </div>
 
               <div className="grid gap-1.5">

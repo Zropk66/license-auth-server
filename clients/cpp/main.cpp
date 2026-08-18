@@ -147,6 +147,7 @@ private:
 
         std::cout << "[Client] 正在向服务端发起授权验证..." << std::endl;
         std::cout << "  - LicenseKey: " << licenseKey << std::endl;
+        std::cout << "  - Software: " << softwareName << std::endl;
         std::cout << "  - hwid: " << hwid << std::endl;
         std::cout << "  - Nonce: " << nonce << std::endl;
 
@@ -154,6 +155,7 @@ private:
         // POST /api/license-verification/verify
         // {
         //   "licenseKey": "...",
+        //   "softwareName": "...",
         //   "hwid": "...",
         //   "deviceName": "...",
         //   "nonce": "...",
