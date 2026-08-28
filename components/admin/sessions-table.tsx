@@ -129,14 +129,37 @@ export default function SessionsTable() {
   const formatOnlineDuration = (startStr: string, endStr: string | null, lastHbStr: string, isActive: boolean) => {
     try {
       const start = new Date(startStr).getTime();
-      const end = endStr ? new Date(endStr).getTime() : (isActive ? new Date().getTime() : new Date(lastHbStr).getTime());
-      const diffMs = Math.max(0, end - start);
+      const lastHb = new Date(lastHbStr).getTime();
+      let end: number;
 
+      if (isActive) {
+        end = Date.now();
+      } else if (endStr) {
+        // 容错处理：如果 terminatedAt 晚于最后心跳超过 5 分钟，说明是事后延期清理，以最后心跳为准
+        const termTime = new Date(endStr).getTime();
+        end = (termTime - lastHb > 5 * 60 * 1000) ? lastHb : termTime;
+      } else {
+        end = lastHb;
+      }
+
+      const diffMs = Math.max(0, end - start);
       const totalMinutes = Math.round(diffMs / (1000 * 60));
       return `${totalMinutes}分钟`;
     } catch (e) {
       return '-';
     }
+  };
+
+  const formatOfflineTime = (terminatedAt: string | null | undefined, lastHbStr: string, isActive: boolean) => {
+    if (isActive) return '-';
+    if (!terminatedAt) return formatDateTime(lastHbStr);
+    const termTime = new Date(terminatedAt).getTime();
+    const lastHb = new Date(lastHbStr).getTime();
+    // 兼容历史脏数据：若下线时间晚于最后心跳超过 5 分钟，显示更精确的最后心跳时刻
+    if (termTime - lastHb > 5 * 60 * 1000) {
+      return formatDateTime(lastHbStr);
+    }
+    return formatDateTime(terminatedAt);
   };
 
   const getSessionStatus = (lastHeartbeatStr: string, dbStatus: string) => {
@@ -284,7 +307,7 @@ export default function SessionsTable() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs">{formatDateTime(session.createdAt)}</TableCell>
-                        <TableCell className="text-xs">{session.terminatedAt ? formatDateTime(session.terminatedAt) : (isSessionActive ? '-' : formatDateTime(session.lastHeartbeat))}</TableCell>
+                        <TableCell className="text-xs">{formatOfflineTime(session.terminatedAt, session.lastHeartbeat, isSessionActive)}</TableCell>
                         <TableCell className="text-xs">{formatDateTime(session.lastHeartbeat)}</TableCell>
                         <TableCell className="text-xs font-medium">{durationStr}</TableCell>
                         <TableCell>

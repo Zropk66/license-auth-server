@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { logAction } from '@/lib/audit';
 import { updateLicenseSchema } from '@/lib/validations';
 import { Prisma } from '@prisma/client';
+import { reapExpiredSessions } from '@/lib/session-reaper';
 
 // 许可证详情查询的 include 配置类型
 type LicenseDetail = Prisma.LicenseGetPayload<{
@@ -87,6 +88,7 @@ export async function GET(
     return authResult;
   }
   try {
+    await reapExpiredSessions().catch(() => {});
     const { id } = await params;
     const license = await prisma.license.findUnique({
       where: { id },
@@ -233,16 +235,23 @@ export async function PATCH(
         updateData.revoke === true ||
         updateData.status === 'suspended'
       ) {
-        await tx.session.updateMany({
-          where: {
-            licenseKey: license.licenseKey,
-            status: 'active',
-          },
-          data: {
-            status: 'terminated',
-            terminatedAt: new Date(),
-          },
+        const timeoutSetting = await tx.setting.findUnique({
+          where: { key: 'session_timeout' },
         });
+        const timeoutSeconds = timeoutSetting ? parseInt(timeoutSetting.value, 10) : 300;
+        const effectiveTimeout = isNaN(timeoutSeconds) || timeoutSeconds <= 0 ? 300 : timeoutSeconds;
+        const cutoff = new Date(Date.now() - effectiveTimeout * 1000);
+        const now = new Date();
+
+        await tx.$executeRaw`
+          UPDATE "Session"
+          SET "status" = 'terminated',
+              "terminatedAt" = CASE
+                WHEN "lastHeartbeat" < ${cutoff} THEN "lastHeartbeat"
+                ELSE ${now}
+              END
+          WHERE "licenseKey" = ${license.licenseKey} AND "status" = 'active'
+        `;
       }
 
       return tx.license.update({

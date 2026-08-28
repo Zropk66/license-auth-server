@@ -10,13 +10,14 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const { ids, action } = await req.json();
+    const { ids, action, softwareName } = await req.json();
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'Missing or invalid license IDs' }, { status: 400 });
     }
 
-    if (!['revoke', 'suspend', 'active', 'delete'].includes(action)) {
+    const validActions = ['revoke', 'suspend', 'active', 'delete', 'change_software', 'reset_hwid'];
+    if (!validActions.includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
@@ -50,6 +51,109 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({
         success: true,
         message: `已删除 ${deletableIds.length} 个已撤销的授权记录`,
+      });
+    }
+
+    if (action === 'change_software') {
+      if (!softwareName || typeof softwareName !== 'string' || softwareName.trim() === '') {
+        return NextResponse.json({ error: '请提供有效的目标软件名称' }, { status: 400 });
+      }
+
+      const targetSoftware = await prisma.software.findUnique({
+        where: { name: softwareName },
+      });
+
+      if (!targetSoftware || !targetSoftware.enabled) {
+        return NextResponse.json({ error: '指定的目标软件不存在或已被禁用' }, { status: 400 });
+      }
+
+      const targetLicenses = await prisma.license.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, licenseKey: true },
+      });
+
+      if (targetLicenses.length === 0) {
+        return NextResponse.json({ error: '未找到选中的有效授权记录' }, { status: 400 });
+      }
+
+      const licenseKeys = targetLicenses.map((l) => l.licenseKey);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.license.updateMany({
+          where: { id: { in: ids } },
+          data: { softwareName },
+        });
+
+        await tx.session.updateMany({
+          where: {
+            licenseKey: { in: licenseKeys },
+            status: 'active',
+          },
+          data: {
+            status: 'terminated',
+            terminatedAt: new Date(),
+          },
+        });
+      });
+
+      await logAction({
+        adminId: authResult.payload.id,
+        action: 'batch_change_software',
+        targetType: 'license',
+        targetId: 'multiple',
+        details: { ids, softwareName, count: targetLicenses.length },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `已将 ${targetLicenses.length} 个授权所属软件更新为 ${softwareName}`,
+      });
+    }
+
+    if (action === 'reset_hwid') {
+      const targetLicenses = await prisma.license.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, licenseKey: true },
+      });
+
+      if (targetLicenses.length === 0) {
+        return NextResponse.json({ error: '未找到选中的有效授权记录' }, { status: 400 });
+      }
+
+      const licenseKeys = targetLicenses.map((l) => l.licenseKey);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.license.updateMany({
+          where: { id: { in: ids } },
+          data: {
+            hwid: null,
+            deviceName: null,
+          },
+        });
+
+        await tx.session.updateMany({
+          where: {
+            licenseKey: { in: licenseKeys },
+            status: 'active',
+          },
+          data: {
+            status: 'terminated',
+            terminatedAt: new Date(),
+          },
+        });
+      });
+
+      await logAction({
+        adminId: authResult.payload.id,
+        action: 'batch_reset_hwid',
+        targetType: 'license',
+        targetId: 'multiple',
+        details: { ids, count: targetLicenses.length },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `已成功重置 ${targetLicenses.length} 个授权的硬件绑定`,
       });
     }
 

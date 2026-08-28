@@ -3,6 +3,7 @@ import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { paginationSchema } from '@/lib/validations';
 import { logAction } from '@/lib/audit';
+import { reapExpiredSessions } from '@/lib/session-reaper';
 
 export async function GET(req: NextRequest) {
   const authResult = await validateAdminAuth(req);
@@ -11,6 +12,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // 列表查询前先惰性收割超时失活的会话
+    await reapExpiredSessions().catch(() => {});
+
     const url = new URL(req.url);
     const pageParam = url.searchParams.get('page');
 
@@ -179,12 +183,20 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // 软终止：将状态设为 terminated 而非物理删除，并写入终止下线时间
+    // 获取会话超时时间配置
+    const timeoutSetting = await prisma.setting.findUnique({
+      where: { key: 'session_timeout' },
+    });
+    const sessionTimeoutSeconds = timeoutSetting ? parseInt(timeoutSetting.value, 10) : 300;
+    const isAlreadyDead = (Date.now() - new Date(session.lastHeartbeat).getTime()) > sessionTimeoutSeconds * 1000;
+    const terminatedAt = isAlreadyDead ? session.lastHeartbeat : new Date();
+
+    // 软终止：将状态设为 terminated 而非物理删除，并写入真实终止下线时间
     await prisma.session.update({
       where: { id: sessionId },
       data: {
         status: 'terminated',
-        terminatedAt: new Date(),
+        terminatedAt,
       },
     });
 

@@ -11,6 +11,17 @@ import { formatDate } from '@/lib/utils';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import CreateLicenseDialog from './create-license-dialog';
+import BatchChangeSoftwareDialog from './batch-change-software-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 type License = {
   id: string;
@@ -35,6 +46,8 @@ export default function LicensesTable() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isChangeSoftwareOpen, setIsChangeSoftwareOpen] = useState(false);
+  const [isResetHwidAlertOpen, setIsResetHwidAlertOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
 
@@ -107,6 +120,40 @@ export default function LicensesTable() {
       });
     } finally {
       setBatchLoading(false);
+    }
+  };
+
+  const handleBatchResetHwid = async () => {
+    if (selectedIds.length === 0) return;
+    setBatchLoading(true);
+    try {
+      const response = await fetch('/api/admin/licenses/batch', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: selectedIds, action: 'reset_hwid' }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        toast({
+          title: '批量重置成功',
+          description: data.message || `已成功重置 ${selectedIds.length} 个授权的 HWID 绑定`,
+        });
+        setSelectedIds([]);
+        fetchLicenses();
+      } else {
+        throw new Error(data.error || '批量重置 HWID 失败');
+      }
+    } catch (error: any) {
+      toast({
+        title: '错误',
+        description: error.message || '批量重置 HWID 失败',
+        variant: 'destructive',
+      });
+    } finally {
+      setBatchLoading(false);
+      setIsResetHwidAlertOpen(false);
     }
   };
 
@@ -263,6 +310,24 @@ export default function LicensesTable() {
                   size="sm"
                   className="h-8 text-xs"
                   disabled={batchLoading}
+                  onClick={() => setIsChangeSoftwareOpen(true)}
+                >
+                  批量修改软件
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs text-orange-600 border-orange-600/20 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                  disabled={batchLoading}
+                  onClick={() => setIsResetHwidAlertOpen(true)}
+                >
+                  批量重置 HWID
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={batchLoading}
                   onClick={() => handleBatchAction('active')}
                 >
                   批量恢复
@@ -402,11 +467,46 @@ export default function LicensesTable() {
         </CardContent>
       </Card>
       
-      <CreateLicenseDialog 
-        open={isDialogOpen} 
+      <CreateLicenseDialog
+        open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onLicenseCreated={handleLicenseCreated}
       />
+
+      <BatchChangeSoftwareDialog
+        open={isChangeSoftwareOpen}
+        onOpenChange={setIsChangeSoftwareOpen}
+        selectedIds={selectedIds}
+        onSuccess={() => {
+          setSelectedIds([]);
+          fetchLicenses();
+        }}
+      />
+
+      <AlertDialog open={isResetHwidAlertOpen} onOpenChange={setIsResetHwidAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认批量重置 HWID 绑定？</AlertDialogTitle>
+            <AlertDialogDescription>
+              您当前选中了 {selectedIds.length} 个授权。重置后，这些卡密已绑定的硬件标识将被清空并恢复待绑定状态，同时相关的活跃会话将被立即终止。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={batchLoading}
+              onClick={(e) => {
+                e.preventDefault();
+                handleBatchResetHwid();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {batchLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              确认重置
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

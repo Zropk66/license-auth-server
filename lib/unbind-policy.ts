@@ -126,16 +126,22 @@ export async function processSelfServiceUnbind(licenseId: string, userId: string
   const oldhwid = license.hwid;
 
   await prisma.$transaction(async (tx) => {
-    await tx.session.updateMany({
-      where: {
-        licenseKey: license.licenseKey,
-        status: 'active',
-      },
-      data: {
-        status: 'terminated',
-        terminatedAt: new Date(),
-      },
+    const timeoutSetting = await tx.setting.findUnique({
+      where: { key: 'session_timeout' },
     });
+    const timeoutSeconds = timeoutSetting ? parseInt(timeoutSetting.value, 10) : 300;
+    const effectiveTimeout = isNaN(timeoutSeconds) || timeoutSeconds <= 0 ? 300 : timeoutSeconds;
+    const cutoff = new Date(Date.now() - effectiveTimeout * 1000);
+
+    await tx.$executeRaw`
+      UPDATE "Session"
+      SET "status" = 'terminated',
+          "terminatedAt" = CASE
+            WHEN "lastHeartbeat" < ${cutoff} THEN "lastHeartbeat"
+            ELSE ${now}
+          END
+      WHERE "licenseKey" = ${license.licenseKey} AND "status" = 'active'
+    `;
 
     await tx.license.update({
       where: { id: license.id },

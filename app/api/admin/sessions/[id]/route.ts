@@ -17,9 +17,20 @@ export async function DELETE(
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
+    // 获取会话超时时间配置
+    const timeoutSetting = await prisma.setting.findUnique({
+      where: { key: 'session_timeout' },
+    });
+    const sessionTimeoutSeconds = timeoutSetting ? parseInt(timeoutSetting.value, 10) : 300;
+    const isAlreadyDead = (Date.now() - new Date(session.lastHeartbeat).getTime()) > sessionTimeoutSeconds * 1000;
+    const terminatedAt = isAlreadyDead ? session.lastHeartbeat : new Date();
+
     await prisma.session.update({
       where: { id },
-      data: { status: 'terminated' },
+      data: {
+        status: 'terminated',
+        terminatedAt,
+      },
     });
     await logAction({
       adminId: authResult.payload.id,
