@@ -21,7 +21,7 @@ export async function PATCH(
     if (body.version !== undefined) dataToUpdate.version = body.version.trim();
     if (body.versionCode !== undefined) dataToUpdate.versionCode = parseInt(body.versionCode, 10);
     if (body.changelog !== undefined) dataToUpdate.changelog = body.changelog.trim();
-    if (body.downloadUrl !== undefined) dataToUpdate.downloadUrl = body.downloadUrl.trim();
+    if (body.downloadUrl !== undefined) dataToUpdate.downloadUrl = body.downloadUrl ? body.downloadUrl.trim() : '';
     if (body.fileHash !== undefined) dataToUpdate.fileHash = body.fileHash ? body.fileHash.trim() : null;
     if (body.isForced !== undefined) dataToUpdate.isForced = Boolean(body.isForced);
     if (body.enabled !== undefined) dataToUpdate.enabled = Boolean(body.enabled);

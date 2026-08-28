@@ -40,9 +40,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { softwareName, version, versionCode, changelog, downloadUrl, fileHash, isForced, enabled } = body;
 
-    if (!softwareName || !version || !versionCode || !downloadUrl) {
+    if (!softwareName || !version || !versionCode) {
       return NextResponse.json(
-        { error: 'Software Name, Version, Version Code and Download URL are required' },
+        { error: 'Software Name, Version and Version Code are required' },
         { status: 400 }
       );
     }
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
         version: version.trim(),
         versionCode: parseInt(versionCode, 10),
         changelog: changelog?.trim() || '',
-        downloadUrl: downloadUrl.trim(),
+        downloadUrl: downloadUrl ? downloadUrl.trim() : '',
         fileHash: fileHash?.trim() || null,
         isForced: Boolean(isForced),
         enabled: enabled !== undefined ? Boolean(enabled) : true,

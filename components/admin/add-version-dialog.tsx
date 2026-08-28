@@ -92,8 +92,8 @@ export default function AddVersionDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!softwareName.trim() || !version.trim() || !downloadUrl.trim()) {
-      toast({ title: '错误', description: '请完整填写软件名称、版本号与下载地址', variant: 'destructive' });
+    if (!softwareName.trim() || !version.trim() || !versionCode.trim()) {
+      toast({ title: '错误', description: '请完整填写软件名称、版本号与数字版本代码', variant: 'destructive' });
       return;
     }
 
@@ -223,13 +223,12 @@ export default function AddVersionDialog({
             </div>
 
             <div className="grid gap-1.5">
-              <Label className="text-xs">安装包下载地址 (URL)</Label>
+              <Label className="text-xs">安装包下载地址 (选填)</Label>
               <Input
-                placeholder="https://example.com/downloads/setup.exe"
+                placeholder="选填，例如: https://example.com/downloads/setup.exe"
                 value={downloadUrl}
                 onChange={(e) => setDownloadUrl(e.target.value)}
                 disabled={isSubmitting}
-                required
                 className="h-8 text-xs"
               />
             </div>

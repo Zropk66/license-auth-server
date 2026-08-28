@@ -162,15 +162,19 @@ export default function SoftwareVersionsPage() {
                           )}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
-                          <a
-                            href={v.downloadUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                          >
-                            <span className="truncate max-w-[200px]">{v.downloadUrl}</span>
-                            <ExternalLink className="h-3 w-3 shrink-0" />
-                          </a>
+                          {v.downloadUrl ? (
+                            <a
+                              href={v.downloadUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                            >
+                              <span className="truncate max-w-[200px]">{v.downloadUrl}</span>
+                              <ExternalLink className="h-3 w-3 shrink-0" />
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">未配置</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Switch checked={v.enabled} onCheckedChange={() => handleToggle(v)} />
