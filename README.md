@@ -4,7 +4,7 @@
 
 这是一个基于 Next.js 开发的高性能、轻量级网络验证与卡密授权管理系统。它为独立软件开发者提供安全、稳定、开箱即用的软件授权与客户端通信验证解决方案。
 
-系统分为 **管理员管理端** 与 **用户自助端**，并提供了一套经过高强度 AES 加密保护的客户端验证与心跳接口。
+系统分为 **管理员管理端** 与 **用户自助端**，并提供了一套信封加密（RSA-OAEP + AES-256-GCM）+ Ed25519 响应签名保护的客户端验证与心跳接口，中间人无法查看或篡改任何业务数据。
 
 ---
 
@@ -16,7 +16,7 @@
 *   **非活跃自动挂起（激活卡独占）**：若客户端断开连接或关闭，验证服务器会自动判定为"非活跃"并**暂停计时**，在客户端重新连线心跳时恢复扣减，实现"用多久扣多久"的精确离线补偿。
 
 ### 2. 多维度安全防护
-*   **客户端通讯高强度加密**：客户端与验证 API 之间的全部数据传输都经过对称 AES-256-GCM 算法动态加密，防篡改、防抓包分析。
+*   **客户端通讯信封加密（v2 协议）**：每请求生成临时会话密钥，RSA-OAEP-SHA256 公钥包裹后随 AES-256-GCM 加密载荷传输；响应同密钥加密并附 Ed25519 签名（sign-then-encrypt）。中间人只能看到随机密文，篡改任意字节即解密失败；无法解密的请求一律返回乱文，不泄露失败原因。
 *   **安全验证防爆破机制**：记录客户端的每一次验证尝试。如果 5 分钟内某一 IP 发生 10 次以上验证失败（如密钥不存在、解密异常、硬件ID不匹配），系统将自动封禁该 IP 5 分钟，防止暴力穷举。
 *   **登录限流保护**：管理员和用户登录端点均内置速率限制（15 分钟内最多 10 次尝试），防止密码暴力破解。
 *   **硬件一机一码绑定**：支持强绑定客户端硬件 ID（硬件一机一码）。未启用硬件绑定时正常登录；已启用未绑定时首次登录自动绑定；已绑定后限制在同一台设备上使用，管理员可手动一键重置绑定关系。
@@ -39,7 +39,7 @@
 
 *   **前端 / 服务端**：Next.js 13 (App Router), React, Tailwind CSS, shadcn/ui
 *   **数据库 / ORM**：PostgreSQL, Prisma ORM
-*   **安全验证**：JWT (JSON Web Tokens), AES-256-GCM 加密, Cloudflare Turnstile 人机验证
+*   **安全验证**：JWT (JSON Web Tokens), RSA-OAEP + AES-256-GCM 信封加密, Ed25519 响应签名, Cloudflare Turnstile 人机验证
 *   **图表绘制**：Recharts
 
 ---
@@ -76,8 +76,11 @@
     # JWT 登录鉴权密钥 (至少 16 字符)
     JWT_SECRET="your-jwt-secret-min-16-chars"
 
-    # 对称加密密钥 (与客户端通讯用)
-    AES_SECRET_KEY="your-aes-secret-key"
+    # 客户端通讯密钥对 (运行 `npm run generate-keys` 自动生成)
+    # Ed25519：验证/心跳响应签名；RSA-2048：解密客户端请求信封
+    AUTH_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+    AUTH_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+    RSA_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 
     # Cloudflare Turnstile (可选)
     NEXT_PUBLIC_TURNSTILE_SITE_KEY="your-turnstile-site-key"
@@ -114,7 +117,11 @@
     POSTGRES_DB=license_auth
 
     JWT_SECRET="your-jwt-secret-min-16-chars"
-    AES_SECRET_KEY="your-aes-secret-key"
+
+    # 客户端通讯密钥对 (运行 `npm run generate-keys` 自动生成)
+    AUTH_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+    AUTH_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+    RSA_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
     ```
     Docker Compose 会自动使用这些变量配置并连接到内部新建的 `db` (PostgreSQL) 服务，无需手动拼装 `DATABASE_URL`。
 
@@ -157,10 +164,11 @@ npm run start
 
 ## 🔒 安全建议
 
-1.  **强密钥保护**：确保 `.env` 中的 `AES_SECRET_KEY` 和 `JWT_SECRET` 足够复杂且保密，`JWT_SECRET` 至少 16 字符。
-2.  **HTTPS 部署**：验证 API 涉及卡密和硬件验证传输，请务必配置 HTTPS 证书提供传输层加密支持。
-3.  **首次部署令牌**：生产环境建议设置 `SETUP_TOKEN`，防止 Owner 账号被恶意抢注。
-4.  **Turnstile**：建议配置 Cloudflare Turnstile 人机验证，防止自动化攻击。
+1.  **强密钥保护**：确保 `.env` 中的 `JWT_SECRET` 足够复杂（至少 16 字符）；`AUTH_PRIVATE_KEY` / `RSA_PRIVATE_KEY` 私钥仅保留在服务端，绝不随客户端分发（客户端只内嵌公钥）。
+2.  **密钥轮换**：重新运行 `npm run generate-keys --force` 后须同步更新客户端公钥（`test-client/config.json` 或 `clients/cpp/update-keys.js`），否则客户端将无法解密响应。
+3.  **HTTPS 部署**：验证 API 涉及卡密和硬件验证传输，请务必配置 HTTPS 证书提供传输层加密支持。
+4.  **首次部署令牌**：生产环境建议设置 `SETUP_TOKEN`，防止 Owner 账号被恶意抢注。
+5.  **Turnstile**：建议配置 Cloudflare Turnstile 人机验证，防止自动化攻击。
 
 ---
 

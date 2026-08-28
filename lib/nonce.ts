@@ -1,5 +1,15 @@
 import prisma from '@/lib/prisma';
 
+/**
+ * 防重放校验（v2 协议强化版）
+ *
+ * v2 变更：
+ *  - nonce 与 timestamp 必填（不再依赖 security_enforce_nonce 开关）
+ *  - 内部异常 fail-closed（原为 fail-open，直接放行）
+ *  - 时间容差仍读取 security_nonce_tolerance_sec（默认 60 秒）
+ *
+ * nonce 去重基于进程内存 Map：仅适用于单实例部署；横向扩容时需迁移至 Redis 等共享存储。
+ */
 const seenNonces = new Map<string, number>();
 const CLEANUP_INTERVAL_MS = 60 * 1000;
 
@@ -20,7 +30,7 @@ export async function validateNonce(
     const settings = await prisma.setting.findMany({
       where: {
         key: {
-          in: ['security_enforce_nonce', 'security_nonce_tolerance_sec'],
+          in: ['security_nonce_tolerance_sec'],
         },
       },
     });
@@ -30,14 +40,10 @@ export async function validateNonce(
       config[s.key] = s.value;
     });
 
-    const isEnforced = config.security_enforce_nonce === 'true';
     const toleranceSec = parseInt(config.security_nonce_tolerance_sec || '60', 10);
 
     if (!nonce || timestamp === undefined || timestamp === null) {
-      if (isEnforced) {
-        return { valid: false, reason: 'Missing required nonce or timestamp' };
-      }
-      return { valid: true };
+      return { valid: false, reason: 'Missing required nonce or timestamp' };
     }
 
     const now = Date.now();
@@ -63,6 +69,6 @@ export async function validateNonce(
     return { valid: true };
   } catch (error: any) {
     console.error('[Nonce] validateNonce error:', error);
-    return { valid: true };
+    return { valid: false, reason: 'Nonce validation internal error' };
   }
 }

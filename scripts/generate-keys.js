@@ -1,8 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * 生成用于软件授权签名的 Ed25519 密钥对并自动注入 .env
- * 运行方式: npm run generate-keys
+ * 生成服务端密钥并自动注入 .env
+ *
+ * 覆盖两类密钥：
+ *   1. Ed25519 密钥对 (AUTH_PRIVATE_KEY / AUTH_PUBLIC_KEY)   — 授权响应签名
+ *   2. RSA-2048 私钥 (RSA_PRIVATE_KEY)                       — 信封加密传输（公钥内嵌客户端）
+ *
+ * 默认仅生成 .env 中缺失的密钥（不覆盖现有部署密钥）；
+ * 运行 `npm run generate-keys -- --force` 可全部重新生成。
  */
 
 const fs = require('fs');
@@ -12,23 +18,36 @@ const crypto = require('crypto');
 const ROOT_DIR = path.resolve(__dirname, '..');
 const ENV_FILE = path.join(ROOT_DIR, '.env');
 const ENV_EXAMPLE_FILE = path.join(ROOT_DIR, '.env.example');
+const force = process.argv.includes('--force');
 
 // 1. 生成 Ed25519 密钥对
-const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519', {
+const ed25519 = crypto.generateKeyPairSync('ed25519', {
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
   publicKeyEncoding: { type: 'spki', format: 'pem' },
 });
 
-// 提取 32 字节原始公钥 Hex
-const spkiDer = crypto.createPublicKey(publicKey).export({ type: 'spki', format: 'der' });
-const rawPubBytes = spkiDer.subarray(spkiDer.length - 32);
-const rawPubHex = rawPubBytes.toString('hex');
+// 提取 32 字节原始 Ed25519 公钥 Hex（C++ 客户端内嵌用）
+const ed25519RawPubHex = crypto
+  .createPublicKey(ed25519.publicKey)
+  .export({ type: 'spki', format: 'der' })
+  .subarray(-32)
+  .toString('hex');
 
-// 转义为单行 env 字符串
-const envPrivateKey = privateKey.replace(/\r?\n/g, '\\n');
-const envPublicKey = publicKey.replace(/\r?\n/g, '\\n');
+// 2. 生成 RSA-2048 密钥对
+const rsa = crypto.generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+});
 
-// 2. 确保 .env 文件存在
+// 提取 RSA 模数 n 与指数 e（C++ 客户端 BCRYPT_RSAKEY_BLOB 内嵌用）
+const rsaJwk = crypto.createPublicKey(rsa.publicKey).export({ format: 'jwk' });
+const b64urlToHex = (s) =>
+  Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('hex');
+const rsaModulusHex = b64urlToHex(rsaJwk.n);
+const rsaExponentHex = b64urlToHex(rsaJwk.e);
+
+// 3. 确保 .env 文件存在
 if (!fs.existsSync(ENV_FILE)) {
   if (fs.existsSync(ENV_EXAMPLE_FILE)) {
     fs.copyFileSync(ENV_EXAMPLE_FILE, ENV_FILE);
@@ -38,35 +57,54 @@ if (!fs.existsSync(ENV_FILE)) {
   }
 }
 
-// 3. 自动将生成的密钥写入/更新至 .env
+// 4. 按需写入缺失的密钥（默认不覆盖已有密钥）
 let envContent = fs.readFileSync(ENV_FILE, 'utf8');
 
-const privateKeyLine = `AUTH_PRIVATE_KEY="${envPrivateKey}"`;
-const publicKeyLine = `AUTH_PUBLIC_KEY="${envPublicKey}"`;
-
-if (envContent.includes('AUTH_PRIVATE_KEY=')) {
-  envContent = envContent.replace(/AUTH_PRIVATE_KEY=.*/g, privateKeyLine);
-} else {
-  envContent += `\n${privateKeyLine}`;
+function upsertEnv(key, value, newlyGenerated) {
+  const line = `${key}="${value.replace(/\r?\n/g, '\\n')}"`;
+  if (envContent.includes(`${key}=`) && !force) {
+    console.log(`[跳过] ${key} 已存在（未加 --force，保留现有密钥）`);
+    return false;
+  }
+  if (envContent.includes(`${key}=`)) {
+    envContent = envContent.replace(new RegExp(`${key}=.*`), line);
+  } else {
+    envContent += `\n${line}`;
+  }
+  return newlyGenerated;
 }
 
-if (envContent.includes('AUTH_PUBLIC_KEY=')) {
-  envContent = envContent.replace(/AUTH_PUBLIC_KEY=.*/g, publicKeyLine);
-} else {
-  envContent += `\n${publicKeyLine}`;
-}
+const wroteAuth = upsertEnv('AUTH_PRIVATE_KEY', ed25519.privateKey, true);
+upsertEnv('AUTH_PUBLIC_KEY', ed25519.publicKey, true);
+const wroteRsa = upsertEnv('RSA_PRIVATE_KEY', rsa.privateKey, true);
 
 fs.writeFileSync(ENV_FILE, envContent.trim() + '\n', 'utf8');
 
 console.log('\n======================================================');
-console.log('       Ed25519 授权签名密钥对已生成并自动注入 .env');
+console.log('            服务端密钥生成完成，已注入 .env');
 console.log('======================================================\n');
-console.log('✓ 服务端私钥与公钥已成功写入 .env');
-console.log('\n------------------------------------------------------');
-console.log('【客户端公钥】:');
-console.log('------------------------------------------------------');
-console.log('32 字节 Hex 格式:');
-console.log(rawPubHex);
-console.log('\nPEM 格式:');
-console.log(publicKey);
+if (!wroteAuth) console.log('✓ Ed25519: 保留 .env 中的现有密钥');
+if (!wroteRsa) console.log('✓ RSA-2048: 保留 .env 中的现有密钥');
+
+if (wroteAuth) {
+  console.log('\n------------------------------------------------------');
+  console.log('【Ed25519 客户端公钥】(test-client config.json 的 publicKey)');
+  console.log('------------------------------------------------------');
+  console.log('32 字节 Hex 格式 (C++ 客户端内嵌):');
+  console.log(ed25519RawPubHex);
+  console.log('\nPEM 格式 (Node/Python 客户端):');
+  console.log(ed25519.publicKey);
+}
+
+if (wroteRsa) {
+  console.log('------------------------------------------------------');
+  console.log('【RSA-2048 客户端公钥】(test-client config.json 的 rsaPublicKey)');
+  console.log('------------------------------------------------------');
+  console.log('PEM 格式 (Node/Python 客户端):');
+  console.log(rsa.publicKey);
+  console.log('\n模数 n Hex (C++ 客户端内嵌, 256 字节大端):');
+  console.log(rsaModulusHex);
+  console.log('\n指数 e Hex:');
+  console.log(rsaExponentHex);
+}
 console.log('======================================================\n');

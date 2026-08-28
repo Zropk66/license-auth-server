@@ -1,25 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { getClientIP, checkVerifyRateLimit, createRateLimitResponse } from '@/lib/rate-limit';
+import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
+import { decryptEnvelope, encryptResponse, opaqueResponse } from '@/lib/secure-protocol';
 
-export async function GET(req: NextRequest) {
+/**
+ * v2 信封加密传输（原 GET 查询串改为 POST 加密体）：
+ * 请求体 { v, envelope, payload }，payload 解密后为 { software, version, versionCode }。
+ * 响应用会话密钥加密，统一 HTTP 200；解密失败一律返回乱文。
+ */
+export async function POST(req: NextRequest) {
+  let sessionKey: Buffer | null = null;
+
   try {
     const ip = getClientIP(req);
+
     const rateLimit = await checkVerifyRateLimit(ip);
     if (!rateLimit.allowed) {
-      return createRateLimitResponse(rateLimit.resetIn);
+      return NextResponse.json(opaqueResponse());
     }
 
-    const { searchParams } = new URL(req.url);
-    const softwareName = searchParams.get('software')?.trim();
-    const currentVersion = searchParams.get('version')?.trim();
-    const currentVersionCodeStr = searchParams.get('versionCode')?.trim();
+    const raw = await req.json().catch(() => null);
+    const decrypted = decryptEnvelope(raw);
+    if (!decrypted) {
+      return NextResponse.json(opaqueResponse());
+    }
+    sessionKey = decrypted.sessionKey;
+    const enc = (obj: unknown) => NextResponse.json(encryptResponse(sessionKey as Buffer, obj));
+
+    const { software, version, versionCode } = decrypted.body || {};
+
+    const softwareName = typeof software === 'string' ? software.trim() : '';
+    const currentVersion = typeof version === 'string' ? version.trim() : '';
+    const currentVersionCodeStr =
+      typeof versionCode === 'string' ? versionCode.trim() : versionCode != null ? String(versionCode) : '';
 
     if (!softwareName) {
-      return NextResponse.json(
-        { error: 'Missing software parameter' },
-        { status: 400 }
-      );
+      return enc({ error: 'Missing software parameter' });
     }
 
     const latestVersion = await prisma.softwareVersion.findFirst({
@@ -33,7 +49,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!latestVersion) {
-      return NextResponse.json({
+      return enc({
         hasUpdate: false,
         message: 'No active version found for this software',
       });
@@ -51,7 +67,7 @@ export async function GET(req: NextRequest) {
       hasUpdate = true;
     }
 
-    return NextResponse.json({
+    return enc({
       hasUpdate,
       latestVersion: {
         version: latestVersion.version,
@@ -66,8 +82,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('[SoftwareUpdate] check-update failed:', error);
     return NextResponse.json(
-      { error: 'Failed to check update' },
-      { status: 500 }
+      sessionKey
+        ? encryptResponse(sessionKey, { error: 'Failed to check update' })
+        : opaqueResponse()
     );
   }
 }

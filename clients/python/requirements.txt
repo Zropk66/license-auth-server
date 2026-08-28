@@ -1,0 +1,2 @@
+# Python 客户端 v2 信封加密协议依赖
+cryptography>=41.0

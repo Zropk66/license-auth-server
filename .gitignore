@@ -40,6 +40,11 @@ package-lock.json
 # test-client
 /test-client/
 
+# C++ 客户端构建产物
+clients/cpp/*.exe
+clients/cpp/*.obj
+clients/cpp/*.pdb
+
 # python cache
 __pycache__/
 *.pyc

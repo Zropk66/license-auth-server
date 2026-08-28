@@ -21,7 +21,7 @@ async function generatePortalSignature(secret: string): Promise<string> {
 
 function redirectUrl(req: NextRequest, path: string): URL {
   const xfp = req.headers.get('x-forwarded-proto');
-  const proto = xfp === 'http' ? 'http' : 'https';
+  const proto = xfp || (req.nextUrl.protocol ? req.nextUrl.protocol.replace(':', '') : 'http') || 'http';
   const host =
     req.headers.get('x-forwarded-host') ||
     req.headers.get('host') ||
@@ -32,38 +32,53 @@ function redirectUrl(req: NextRequest, path: string): URL {
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  const securityPath = process.env.PORTAL_SECURITY_PATH || 'secure-zropk';
+  const securityPath = process.env.PORTAL_SECURITY_PATH?.trim();
+  const protectedPathsRaw = process.env.PORTAL_PROTECTED_PATHS?.trim();
+  const portalEnabled = process.env.PORTAL_ENABLED !== 'false' && process.env.PORTAL_ENABLED !== '0';
 
-  if (pathname === `/${securityPath}` || pathname === `/${securityPath}/`) {
-    const response = NextResponse.redirect(redirectUrl(request, '/admin/login'));
-    const secret = process.env.JWT_SECRET || 'fallback-portal-secret-salt-min-16';
-    const signature = await generatePortalSignature(secret);
+  // 仅在明确配置了安全入口路径且受保护路径非空、且未显式关闭时才启用安全门户
+  const isPortalActive =
+    portalEnabled &&
+    !!securityPath &&
+    !['none', 'off', 'false', 'disabled'].includes(securityPath.toLowerCase()) &&
+    !!protectedPathsRaw &&
+    !['none', 'off', 'false', 'disabled'].includes(protectedPathsRaw.toLowerCase());
 
-    response.cookies.set('portal_authorized', signature, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'strict',
-      path: '/',
-    });
-    return response;
-  }
+  if (isPortalActive) {
+    if (pathname === `/${securityPath}` || pathname === `/${securityPath}/`) {
+      const response = NextResponse.redirect(redirectUrl(request, '/admin/login'));
+      const secret = process.env.JWT_SECRET || 'fallback-portal-secret-salt-min-16';
+      const signature = await generatePortalSignature(secret);
 
-  const protectedPaths = (process.env.PORTAL_PROTECTED_PATHS || 'home,admin,user')
-    .split(',')
-    .map(s => s.trim().toLowerCase());
+      const isHttps = request.nextUrl.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
 
-  const isProtected =
-    (protectedPaths.includes('home') && pathname === '/') ||
-    (protectedPaths.includes('admin') && (pathname.startsWith('/admin') || pathname === '/admin/login')) ||
-    (protectedPaths.includes('user') && (pathname.startsWith('/user') || pathname === '/user/login'));
+      response.cookies.set('portal_authorized', signature, {
+        httpOnly: true,
+        secure: isHttps,
+        sameSite: 'lax',
+        path: '/',
+      });
+      return response;
+    }
 
-  if (isProtected) {
-    const portalAuth = request.cookies.get('portal_authorized')?.value;
-    const secret = process.env.JWT_SECRET || 'fallback-portal-secret-salt-min-16';
-    const expectedSignature = await generatePortalSignature(secret);
+    const protectedPaths = protectedPathsRaw
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean);
 
-    if (portalAuth !== expectedSignature) {
-      return new NextResponse('Forbidden: Access via secure portal path only.', { status: 403 });
+    const isProtected =
+      (protectedPaths.includes('home') && pathname === '/') ||
+      (protectedPaths.includes('admin') && (pathname.startsWith('/admin') || pathname === '/admin/login')) ||
+      (protectedPaths.includes('user') && (pathname.startsWith('/user') || pathname === '/user/login'));
+
+    if (isProtected) {
+      const portalAuth = request.cookies.get('portal_authorized')?.value;
+      const secret = process.env.JWT_SECRET || 'fallback-portal-secret-salt-min-16';
+      const expectedSignature = await generatePortalSignature(secret);
+
+      if (portalAuth !== expectedSignature) {
+        return new NextResponse('Forbidden: Access via secure portal path only.', { status: 403 });
+      }
     }
   }
 

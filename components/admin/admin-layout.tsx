@@ -58,7 +58,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { name: '版本管理', href: '/admin/software-versions', icon: Package },
     { name: '黑名单管理', href: '/admin/blacklist', icon: ShieldAlert },
     { name: '系统公告', href: '/admin/announcements', icon: Megaphone },
-    { name: '操作日志', href: '/admin/audit-logs', icon: ClipboardList },
+    { name: '日志', href: '/admin/audit-logs', icon: ClipboardList },
     { name: '管理员管理', href: '/admin/managers', icon: UserCog },
     { name: '系统设置', href: '/admin/settings', icon: Settings },
   ];

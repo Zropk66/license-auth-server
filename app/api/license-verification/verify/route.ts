@@ -1,33 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signPayload } from '@/lib/crypto-sign';
 import prisma from '@/lib/prisma';
-import { getClientIP, checkVerifyRateLimit, createRateLimitResponse } from '@/lib/rate-limit';
+import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
 import { validateNonce } from '@/lib/nonce';
+import { decryptEnvelope, encryptResponse, opaqueResponse, strField, numField } from '@/lib/secure-protocol';
+import { logVerificationAttempt } from '@/lib/verification-logger';
 
+/**
+ * v2 信封加密传输：请求体为 { v, envelope, payload }，解密失败一律返回乱文；
+ * 解密成功后的所有响应（含全部错误分支）用该请求的会话密钥加密，统一 HTTP 200。
+ */
 export async function POST(req: NextRequest) {
   const ipAddress = getClientIP(req);
+  let sessionKey: Buffer | null = null;
 
   try {
+    // ── 解密前置层：IP 黑名单 / 限流在解密前执行，命中返回乱文 ──
     const ipBlacklistCheck = await isBlacklisted(ipAddress);
     if (ipBlacklistCheck.blacklisted) {
-      return NextResponse.json(
-        { error: 'Access denied: IP is blacklisted', reason: ipBlacklistCheck.reason },
-        { status: 403 }
-      );
+      await logVerificationAttempt({
+        ipAddress,
+        success: false,
+        reason: 'ip_blacklisted',
+      });
+      return NextResponse.json(opaqueResponse());
     }
 
     const verifyLimit = await checkVerifyRateLimit(ipAddress);
     if (!verifyLimit.allowed) {
-      await prisma.verificationAttempt.create({
-        data: {
-          ipAddress,
-          success: false,
-          reason: 'rate_limited',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        success: false,
+        reason: 'rate_limited',
       });
       recordSuspiciousActivity(ipAddress, 'rate_limit');
-      return createRateLimitResponse(verifyLimit.resetIn);
+      return NextResponse.json(opaqueResponse());
     }
 
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -40,87 +48,97 @@ export async function POST(req: NextRequest) {
     });
 
     if (failureCount >= 10) {
-      await prisma.verificationAttempt.create({
-        data: {
-          ipAddress,
-          success: false,
-          reason: 'blocked_due_to_rate_limit',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        success: false,
+        reason: 'blocked_due_to_rate_limit',
       });
       recordSuspiciousActivity(ipAddress, 'rate_limit');
-      return NextResponse.json(
-        { error: 'Too many failed verification attempts. Please try again later.' },
-        { status: 429 }
-      );
+      return NextResponse.json(opaqueResponse());
     }
 
-    let body: any;
-    try {
-      body = await req.json();
-    } catch {
-      await prisma.verificationAttempt.create({
-        data: {
-          ipAddress,
-          success: false,
-          reason: 'invalid_json_body',
-        },
+    const raw = await req.json().catch(() => null);
+    const decrypted = decryptEnvelope(raw);
+    if (!decrypted) {
+      await logVerificationAttempt({
+        ipAddress,
+        success: false,
+        reason: 'invalid_envelope',
       });
-      return NextResponse.json(
-        { error: 'Invalid JSON request body' },
-        { status: 400 }
-      );
+      return NextResponse.json(opaqueResponse());
     }
+    sessionKey = decrypted.sessionKey;
+    const enc = (obj: unknown) => NextResponse.json(encryptResponse(sessionKey as Buffer, obj));
 
-    const { licenseKey, hwid, deviceName, nonce, timestamp, softwareName } = body || {};
+    const body = decrypted.body || {};
+    const licenseKey = strField(body.licenseKey);
+    const hwid = strField(body.hwid);
+    const deviceName = strField(body.deviceName);
+    const nonce = strField(body.nonce);
+    const timestamp = numField(body.timestamp);
+    const softwareName = strField(body.softwareName);
 
     if (hwid) {
       const hwBlacklistCheck = await isBlacklisted(ipAddress, hwid);
       if (hwBlacklistCheck.blacklisted) {
-        return NextResponse.json(
-          { error: 'Access denied: Hardware ID is blacklisted', reason: hwBlacklistCheck.reason },
-          { status: 403 }
-        );
+        await logVerificationAttempt({
+          ipAddress,
+          licenseKey,
+          softwareName,
+          hwid,
+          success: false,
+          reason: 'hwid_blacklisted',
+        });
+        return enc({
+          error: 'Access denied: Hardware ID is blacklisted',
+          reason: hwBlacklistCheck.reason,
+        });
       }
     }
 
     const nonceCheck = await validateNonce(nonce, timestamp);
     if (!nonceCheck.valid) {
-      return NextResponse.json(
-        { error: 'Anti-replay validation failed', reason: nonceCheck.reason },
-        { status: 400 }
-      );
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'anti_replay_failed',
+      });
+      return enc({
+        error: 'Anti-replay validation failed',
+        reason: nonceCheck.reason,
+      });
     }
 
     if (!softwareName) {
-      await prisma.verificationAttempt.create({
-        data: {
-          licenseKey: licenseKey || null,
-          ipAddress,
-          success: false,
-          reason: 'missing_software_name',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey: licenseKey || null,
+        softwareName: null,
+        hwid,
+        success: false,
+        reason: 'missing_software_name',
       });
-      return NextResponse.json(
-        {
-          error: 'Software name is required',
-          message: '请求中未提供软件标识 (softwareName)。',
-        },
-        { status: 400 }
-      );
+      return enc({
+        error: 'Software name is required',
+        message: '请求中未提供软件标识 (softwareName)。',
+      });
     }
 
     if (!licenseKey) {
-      await prisma.verificationAttempt.create({
-        data: {
-          ipAddress,
-          success: false,
-          reason: 'missing_license_key',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey: null,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'missing_license_key',
       });
-      return NextResponse.json(
-        { error: 'License key is required' },
-        { status: 400 }
-      );
+      return enc({
+        error: 'License key is required',
+      });
     }
 
     const license = await prisma.license.findUnique({
@@ -133,41 +151,35 @@ export async function POST(req: NextRequest) {
     });
 
     if (!license) {
-      await prisma.verificationAttempt.create({
-        data: {
-          licenseKey,
-          ipAddress,
-          success: false,
-          reason: 'invalid_license_key',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'invalid_license_key',
       });
       recordSuspiciousActivity(ipAddress, 'bruteforce', hwid);
-      return NextResponse.json(
-        {
-          error: 'Invalid license key',
-          message: '许可证不存在或无效，请联系管理员确认。',
-        },
-        { status: 404 }
-      );
+      return enc({
+        error: 'Invalid license key',
+        message: '许可证不存在或无效，请联系管理员确认。',
+      });
     }
 
     // 检查软件标识是否匹配
     if (license.softwareName !== softwareName) {
-      await prisma.verificationAttempt.create({
-        data: {
-          licenseKey,
-          ipAddress,
-          success: false,
-          reason: 'software_mismatch',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'software_mismatch',
       });
-      return NextResponse.json(
-        {
-          error: 'Software name mismatch',
-          message: `许可证软件不匹配：该授权仅适用于「${license.softwareName}」。`,
-        },
-        { status: 403 }
-      );
+      return enc({
+        error: 'Software name mismatch',
+        message: `许可证软件不匹配：该授权仅适用于「${license.softwareName}」。`,
+      });
     }
 
     // 检查所属软件是否处于启用状态
@@ -175,59 +187,50 @@ export async function POST(req: NextRequest) {
       where: { name: license.softwareName },
     });
     if (boundSoftware && !boundSoftware.enabled) {
-      await prisma.verificationAttempt.create({
-        data: {
-          licenseKey,
-          ipAddress,
-          success: false,
-          reason: 'software_disabled',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'software_disabled',
       });
-      return NextResponse.json(
-        {
-          error: 'Software is disabled',
-          message: `所属软件「${license.softwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
-        },
-        { status: 403 }
-      );
+      return enc({
+        error: 'Software is disabled',
+        message: `所属软件「${license.softwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
+      });
     }
 
     // 检查许可证是否被撤销
     if (license.status === 'revoked') {
-      await prisma.verificationAttempt.create({
-        data: {
-          licenseKey,
-          ipAddress,
-          success: false,
-          reason: 'license_revoked',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'license_revoked',
       });
-      return NextResponse.json(
-        {
-          error: 'License has been revoked',
-          message: '您的许可证已被管理员撤销/吊销，授权已停用。',
-        },
-        { status: 403 }
-      );
+      return enc({
+        error: 'License has been revoked',
+        message: '您的许可证已被管理员撤销/吊销，授权已停用。',
+      });
     }
 
     // 检查许可证是否被暂停
     if (license.status === 'suspended') {
-      await prisma.verificationAttempt.create({
-        data: {
-          licenseKey,
-          ipAddress,
-          success: false,
-          reason: 'license_suspended',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'license_suspended',
       });
-      return NextResponse.json(
-        {
-          error: 'License has been suspended',
-          message: '您的许可证已被管理员暂停使用，请联系管理员。',
-        },
-        { status: 403 }
-      );
+      return enc({
+        error: 'License has been suspended',
+        message: '您的许可证已被管理员暂停使用，请联系管理员。',
+      });
     }
 
     // 处理时长卡激活与恢复
@@ -263,7 +266,7 @@ export async function POST(req: NextRequest) {
         data: {
           status: 'active',
           activatedAt: now,
-          expirationDate: expirationDate,
+          expirationDate,
         },
         include: {
           user: {
@@ -275,41 +278,35 @@ export async function POST(req: NextRequest) {
 
     // 检查许可证是否已过期
     if (new Date(activeLicense.expirationDate) < new Date()) {
-      await prisma.verificationAttempt.create({
-        data: {
-          licenseKey,
-          ipAddress,
-          success: false,
-          reason: 'license_expired',
-        },
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        success: false,
+        reason: 'license_expired',
       });
-      return NextResponse.json(
-        {
-          error: 'License has expired',
-          message: '您的许可证已过期，请及时续费后重新激活。',
-        },
-        { status: 403 }
-      );
+      return enc({
+        error: 'License has expired',
+        message: '您的许可证已过期，请及时续费后重新激活。',
+      });
     }
 
     // 检查HWID 绑定
     if (activeLicense.hardwareBindingEnabled) {
       if (!hwid) {
-        await prisma.verificationAttempt.create({
-          data: {
-            licenseKey,
-            ipAddress,
-            success: false,
-            reason: 'hwid_required',
-          },
+        await logVerificationAttempt({
+          ipAddress,
+          licenseKey,
+          softwareName,
+          hwid: null,
+          success: false,
+          reason: 'hwid_required',
         });
-        return NextResponse.json(
-          {
-            error: 'Hardware ID is required for this license',
-            message: '此许可证已启用设备绑定，请求中未提供设备HWID。',
-          },
-          { status: 400 }
-        );
+        return enc({
+          error: 'Hardware ID is required for this license',
+          message: '此许可证已启用设备绑定，请求中未提供设备HWID。',
+        });
       }
 
       // 如果尚未绑定HWID，则绑定当前HWID
@@ -324,21 +321,18 @@ export async function POST(req: NextRequest) {
           },
         });
       } else if (activeLicense.hwid !== hwid) {
-        await prisma.verificationAttempt.create({
-          data: {
-            licenseKey,
-            ipAddress,
-            success: false,
-            reason: 'hwid_mismatch',
-          },
+        await logVerificationAttempt({
+          ipAddress,
+          licenseKey,
+          softwareName,
+          hwid,
+          success: false,
+          reason: 'hwid_mismatch',
         });
-        return NextResponse.json(
-          {
-            error: 'License is bound to a different hardware ID',
-            message: '许可证已在另一台设备上绑定使用，当前设备无权访问。',
-          },
-          { status: 403 }
-        );
+        return enc({
+          error: 'License is bound to a different hardware ID',
+          message: '许可证已在另一台设备上绑定使用，当前设备无权访问。',
+        });
       }
     }
 
@@ -379,22 +373,14 @@ export async function POST(req: NextRequest) {
     });
     const heartbeatInterval = heartbeatSetting ? parseInt(heartbeatSetting.value, 10) : 30;
 
-    // 记录成功的验证尝试
-    await prisma.verificationAttempt.create({
-      data: {
-        licenseKey,
-        ipAddress,
-        success: true,
-      },
-    });
-
-    // 成功后清理 1 小时前的记录
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    await prisma.verificationAttempt.deleteMany({
-      where: {
-        ipAddress,
-        createdAt: { lt: oneHourAgo },
-      },
+    // 记录成功的验证尝试与终端日志
+    await logVerificationAttempt({
+      ipAddress,
+      licenseKey,
+      softwareName: activeLicense.softwareName,
+      hwid,
+      success: true,
+      reason: 'success',
     });
 
     // 记录HWID 绑定历史（无论是否首次绑定均维护活跃记录）
@@ -422,7 +408,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 组装授权数据并使用 Ed25519 私钥进行数字签名
+    // 组装授权数据并使用 Ed25519 私钥进行数字签名，最后整体加密（sign-then-encrypt）
     const signedResponse = signPayload({
       valid: true,
       licenseKey: activeLicense.licenseKey,
@@ -436,7 +422,7 @@ export async function POST(req: NextRequest) {
       timestamp: Date.now(),
     });
 
-    return NextResponse.json(signedResponse, { status: 200 });
+    return enc(signedResponse);
 
   } catch (error) {
     console.error('License verification error:', error);
@@ -454,8 +440,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: 'An unexpected error occurred', message: '服务器发生内部错误，请稍后再试。' },
-      { status: 500 }
+      sessionKey
+        ? encryptResponse(sessionKey, { error: 'An unexpected error occurred', message: '服务器发生内部错误，请稍后再试。' })
+        : opaqueResponse()
     );
   }
 }

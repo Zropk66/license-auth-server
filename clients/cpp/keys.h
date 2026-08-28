@@ -1,0 +1,16 @@
+// 自动生成（node update-keys.js），请勿手工编辑
+// 与服务端 .env 中 RSA_PRIVATE_KEY / AUTH_PRIVATE_KEY 配对
+// 密钥轮换后重新运行脚本并重编译；公钥不是秘密，但必须与服务端私钥配对
+
+#pragma once
+
+// RSA-2048 公钥模数 n（256 字节，大端）
+static const char* RSA_MODULUS_HEX =
+    "b99e3a2124c2f9d2fbc01c3ddb272169693d0dc6bd972b5d2cb7eb6116d31aa46eb5ce42e1e42e9513624f5f711c0e691c9bc6fbd751f8482ea597120b9847bb7866286169b92315b3563d8151a00b17ab2f8ac319ce24c26401dddc57419e417957366ca1645bee5d947c2bac175b6fac30290fa84f1bc7fbf98598c6bcc835eb5e70ff1d4ea1190488527f68307baa7b655a794ad8871cc68b595d9f92ce462871a32869593efc1bf4474d7495b3178f824b48673aa73faf9ac0d2b6621c198de074db5fceb549489f39153bd2916c30b5a835ae535c962ab25def5fd662bf5750cc00606d7480bf0f99682cda2ff869f1d57438d6258bee769d7b16671713";
+
+// RSA 公钥指数 e（0x010001 = 65537）
+static const char* RSA_EXPONENT_HEX = "010001";
+
+// Ed25519 验签公钥（32 字节）
+static const char* ED25519_PUBLIC_KEY_HEX =
+    "b71049913604c801dd1fafd8e554ca48e6a858f90dfec7d74c6e1d55e494d4cf";
