@@ -15,7 +15,7 @@ export default function UnbindPolicyCard() {
   const [saving, setSaving] = useState(false);
   const [unbindEnabled, setUnbindEnabled] = useState(false);
   const [unbindDefaultAllow, setUnbindDefaultAllow] = useState(false);
-  const [maxPerMonth, setMaxPerMonth] = useState('2');
+  const [maxPerMonth, setMaxPerMonth] = useState('0');
   const [cooldownHours, setCooldownHours] = useState('24');
   const [deductHours, setDeductHours] = useState('0');
 
@@ -28,7 +28,7 @@ export default function UnbindPolicyCard() {
 
       const enabled = data.find((s) => s.key === 'unbind_enabled')?.value === 'true';
       const defaultAllow = data.find((s) => s.key === 'unbind_default_allow')?.value === 'true';
-      const max = data.find((s) => s.key === 'unbind_max_per_month')?.value || '2';
+      const max = data.find((s) => s.key === 'unbind_max_per_month')?.value ?? '0';
       const cooldown = data.find((s) => s.key === 'unbind_cooldown_hours')?.value || '24';
       const deduct = data.find((s) => s.key === 'unbind_deduct_hours')?.value || '0';
 
@@ -136,14 +136,14 @@ export default function UnbindPolicyCard() {
                   <Label className="text-xs font-medium">每月最大解绑次数</Label>
                   <Input
                     type="number"
-                    min="1"
+                    min="0"
                     value={maxPerMonth}
                     onChange={(e) => setMaxPerMonth(e.target.value)}
                     className="text-xs h-8"
                     required
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    每个卡密每月最多允许解绑的次数（次月自动重置）。
+                    每个卡密每月最多允许解绑的次数（次月自动重置，设为 0 表示默认不允许自助解绑）。
                   </p>
                 </div>
 

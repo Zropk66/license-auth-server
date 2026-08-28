@@ -16,7 +16,7 @@ export async function getUnbindStatus(licenseId: string, userId: string) {
   });
 
   const enabled = config.unbind_enabled === 'true';
-  const baseMaxPerMonth = parseInt(config.unbind_max_per_month || '2', 10);
+  const baseMaxPerMonth = config.unbind_max_per_month !== undefined ? parseInt(config.unbind_max_per_month, 10) : 0;
   const cooldownHours = parseInt(config.unbind_cooldown_hours || '24', 10);
   const deductHours = parseInt(config.unbind_deduct_hours || '0', 10);
 
@@ -77,7 +77,7 @@ export async function processSelfServiceUnbind(licenseId: string, userId: string
     throw new Error('系统当前未开启用户自助换绑功能');
   }
 
-  const baseMaxPerMonth = parseInt(config.unbind_max_per_month || '2', 10);
+  const baseMaxPerMonth = config.unbind_max_per_month !== undefined ? parseInt(config.unbind_max_per_month, 10) : 0;
   const cooldownHours = parseInt(config.unbind_cooldown_hours || '24', 10);
   const deductHours = parseInt(config.unbind_deduct_hours || '0', 10);
 

@@ -426,7 +426,8 @@ export default function UserLicenseDetailsPage() {
                         size="sm"
                         className="text-destructive hover:bg-destructive/10 shrink-0"
                         onClick={handleSelfUnbind}
-                        disabled={unbinding}
+                        disabled={unbinding || (license.unbindStatus?.remaining !== undefined && license.unbindStatus.remaining <= 0)}
+                        title={license.unbindStatus?.remaining !== undefined && license.unbindStatus.remaining <= 0 ? '当月无可用换绑次数' : undefined}
                       >
                         {unbinding ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />

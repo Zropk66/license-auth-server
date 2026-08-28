@@ -49,8 +49,21 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const pageParam = url.searchParams.get('page');
+    const keyParam = url.searchParams.get('key');
 
     const orderBy = { createdAt: 'desc' as const };
+
+    // 精确按 licenseKey 查询单条授权（用于审计日志等场景的快速跳转）
+    if (keyParam !== null) {
+      const license = await prisma.license.findUnique({
+        where: { licenseKey: keyParam },
+        include: licenseInclude,
+      });
+      if (!license) {
+        return NextResponse.json({ error: 'License not found' }, { status: 404 });
+      }
+      return NextResponse.json(mapLicense(license));
+    }
 
     // 未提供 page 参数时返回全部数据（数组格式），保持前端兼容
     if (pageParam === null) {

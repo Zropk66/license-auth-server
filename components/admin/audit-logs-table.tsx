@@ -14,7 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Search, RefreshCcw, ClipboardList, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Search, RefreshCcw, ClipboardList, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { MaskedText } from '@/components/ui/masked-text';
@@ -74,6 +75,37 @@ const REASON_MAP: Record<string, string> = {
 
 export default function AuditLogsTable() {
   const { toast } = useToast();
+  const router = useRouter();
+
+  // 跳转授权详情：按 licenseKey 查询 license id 后跳转
+  const [navigatingKeyId, setNavigatingKeyId] = useState<string | null>(null);
+  const handleNavigateToLicense = useCallback(async (logId: string, licenseKey: string) => {
+    setNavigatingKeyId(logId);
+    try {
+      const res = await fetch(`/api/admin/licenses?key=${encodeURIComponent(licenseKey)}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          toast({
+            title: '未找到授权',
+            description: '该卡密可能已被删除',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw new Error('查询授权失败');
+      }
+      const license = (await res.json()) as { id: string };
+      router.push(`/admin/licenses/${license.id}`);
+    } catch (err: any) {
+      toast({
+        title: '跳转失败',
+        description: err.message || '查询授权时出错',
+        variant: 'destructive',
+      });
+    } finally {
+      setNavigatingKeyId(null);
+    }
+  }, [router, toast]);
 
   // ── 选项卡状态 ──
   const [activeTab, setActiveTab] = useState<'verification' | 'audit'>('verification');
@@ -320,9 +352,26 @@ export default function AuditLogsTable() {
                         <TableCell className="text-xs">{formatDate(log.createdAt)}</TableCell>
                         <TableCell className="font-mono text-xs">
                           {log.licenseKey ? (
-                            <span className="bg-muted/70 px-1.5 py-0.5 rounded inline-block">
-                              <MaskedText value={log.licenseKey} head={6} tail={4} />
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className="bg-muted/70 px-1.5 py-0.5 rounded inline-block">
+                                <MaskedText value={log.licenseKey} head={6} tail={4} />
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => handleNavigateToLicense(log.id, log.licenseKey!)}
+                                disabled={navigatingKeyId === log.id}
+                                title="跳转至该授权详情页"
+                              >
+                                {navigatingKeyId === log.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <ExternalLink className="h-3 w-3" />
+                                )}
+                                <span className="sr-only">跳转授权详情</span>
+                              </Button>
+                            </div>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}

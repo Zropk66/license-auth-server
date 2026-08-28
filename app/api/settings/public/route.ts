@@ -29,7 +29,7 @@ export async function GET() {
       turnstileSiteKey: siteKey,
       unbindEnabled,
       unbindDefaultAllow,
-      unbindMaxPerMonth: parseInt(settingMap['unbind_max_per_month'] || '2', 10),
+      unbindMaxPerMonth: settingMap['unbind_max_per_month'] !== undefined ? parseInt(settingMap['unbind_max_per_month'], 10) : 0,
       unbindCooldownHours: parseInt(settingMap['unbind_cooldown_hours'] || '24', 10),
       unbindDeductHours: parseInt(settingMap['unbind_deduct_hours'] || '0', 10),
     });

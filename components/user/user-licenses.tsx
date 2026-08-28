@@ -148,13 +148,13 @@ export default function UserLicenses() {
                     <TableRow key={license.id}>
                       <TableCell>
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs sm:text-sm font-mono truncate max-w-[100px] sm:max-w-[120px]">
+                          <span className="text-xs sm:text-sm font-mono inline-flex items-center">
                             <MaskedText value={license.licenseKey} head={6} tail={4} />
                           </span>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6"
+                            className="h-6 w-6 shrink-0"
                             onClick={() => copyToClipboard(license.licenseKey)}
                           >
                             <Copy className="h-3 w-3" />

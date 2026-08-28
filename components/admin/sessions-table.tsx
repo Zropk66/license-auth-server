@@ -265,16 +265,16 @@ export default function SessionsTable() {
 
                     return (
                       <TableRow key={session.id}>
-                        <TableCell className="font-mono text-xs max-w-[100px] truncate">
+                        <TableCell className="font-mono text-xs">
                           <MaskedText value={session.id} head={6} tail={4} />
                         </TableCell>
                         <TableCell className="font-medium">{session.username}</TableCell>
-                        <TableCell className="font-mono text-xs max-w-[120px] truncate">
+                        <TableCell className="font-mono text-xs">
                           <MaskedText value={session.licenseKey} head={6} tail={4} />
                         </TableCell>
                         <TableCell>{session.softwareName}</TableCell>
                         <TableCell className="font-mono text-xs">{session.ipAddress || '-'}</TableCell>
-                        <TableCell className="font-mono text-xs max-w-[120px] truncate">
+                        <TableCell className="font-mono text-xs">
                           {session.hwid ? <MaskedText value={session.hwid} head={6} tail={4} /> : '-'}
                         </TableCell>
                         <TableCell>

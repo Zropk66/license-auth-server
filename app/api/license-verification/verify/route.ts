@@ -336,24 +336,55 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 创建新会话：先将处于 active 状态的旧会话终止
+    // 会话复用策略：
+    // - 开启 HWID 绑定：同卡密同 HWID 的活跃会话直接复用，不新建
+    // - 未开启 HWID 绑定：同卡密同 HWID（同一台设备）的活跃会话直接复用；
+    //   若存在不同 HWID 的活跃会话（第二台设备上线），终止旧会话并新建
+    // - 同台设备复用，不同设备新建
+    const nowDate = new Date();
+
     const session = await prisma.$transaction(async (tx) => {
-      const activeOldSessions = await tx.session.findMany({
+      // 查找该卡密当前活跃且 HWID 匹配的会话（同一台设备）
+      const reusableSession = await tx.session.findFirst({
         where: {
           licenseKey,
           hwid: hwid || null,
           status: 'active',
         },
+        orderBy: { lastHeartbeat: 'desc' },
       });
 
-      for (const oldSession of activeOldSessions) {
-        await tx.session.update({
-          where: { id: oldSession.id },
+      if (reusableSession) {
+        // 同一台设备已有活跃会话：直接复用，仅更新心跳与 IP
+        return tx.session.update({
+          where: { id: reusableSession.id },
           data: {
-            status: 'terminated',
-            terminatedAt: oldSession.lastHeartbeat,
+            ipAddress,
+            lastHeartbeat: nowDate,
           },
         });
+      }
+
+      // 未开启 HWID 绑定时，若存在其他 HWID 的活跃会话（第二台设备上线），
+      // 终止旧会话后新建；开启 HWID 绑定则不会走到此分支（已被 hwid_mismatch 拦截）
+      if (!activeLicense.hardwareBindingEnabled) {
+        const otherHwidSessions = await tx.session.findMany({
+          where: {
+            licenseKey,
+            status: 'active',
+            NOT: { hwid: hwid || null },
+          },
+        });
+
+        for (const oldSession of otherHwidSessions) {
+          await tx.session.update({
+            where: { id: oldSession.id },
+            data: {
+              status: 'terminated',
+              terminatedAt: oldSession.lastHeartbeat,
+            },
+          });
+        }
       }
 
       return tx.session.create({
@@ -362,7 +393,7 @@ export async function POST(req: NextRequest) {
           hwid: hwid || null,
           ipAddress,
           status: 'active',
-          lastHeartbeat: new Date(),
+          lastHeartbeat: nowDate,
         },
       });
     });

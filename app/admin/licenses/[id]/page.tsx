@@ -116,7 +116,7 @@ export default function LicenseDetailsPage() {
         const data = await res.json();
         setGlobalUnbindConfig({
           enabled: !!data.unbindEnabled,
-          maxPerMonth: data.unbindMaxPerMonth || 2,
+          maxPerMonth: data.unbindMaxPerMonth !== undefined ? data.unbindMaxPerMonth : 0,
           cooldownHours: data.unbindCooldownHours || 24,
           deductHours: data.unbindDeductHours || 0,
         });
@@ -824,13 +824,13 @@ export default function LicenseDetailsPage() {
                       <div className="p-2 border rounded bg-background">
                         <div className="text-[11px] text-muted-foreground">当月最大上限</div>
                         <div className="text-sm font-semibold mt-0.5">
-                          {(globalUnbindConfig.maxPerMonth || 2) + (license.extraUnbindCount || 0)} 次/月
+                          {(globalUnbindConfig.maxPerMonth ?? 0) + (license.extraUnbindCount || 0)} 次/月
                         </div>
                       </div>
                       <div className="p-2 border rounded bg-background">
                         <div className="text-[11px] text-muted-foreground">当月剩余可用</div>
                         <div className="text-sm font-semibold mt-0.5 text-green-600">
-                          {Math.max(0, (globalUnbindConfig.maxPerMonth || 2) + (license.extraUnbindCount || 0) - (license.monthlyUnbindCount || 0))} 次
+                          {Math.max(0, (globalUnbindConfig.maxPerMonth ?? 0) + (license.extraUnbindCount || 0) - (license.monthlyUnbindCount || 0))} 次
                         </div>
                       </div>
                     </div>
@@ -1049,7 +1049,7 @@ export default function LicenseDetailsPage() {
                           const isCurrent = hist.hwid === license.hwid;
                           return (
                             <tr key={hist.id} className="hover:bg-muted/30 transition-colors">
-                              <td className="px-4 py-2 font-mono text-xs max-w-[240px] truncate">
+                              <td className="px-4 py-2 font-mono text-xs">
                                 <MaskedText value={hist.hwid} head={6} tail={4} />
                               </td>
                               <td className="px-4 py-2">
