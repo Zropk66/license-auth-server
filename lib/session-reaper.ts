@@ -31,6 +31,31 @@ export async function reapExpiredSessions(): Promise<number> {
   }
 }
 
+/**
+ * 清洗历史脏数据：
+ * 若历史已下线会话 (status='terminated') 的下线时间异常晚于最后心跳超过 5 分钟，
+ * 将其 terminatedAt 物理回正为该会话真实的 lastHeartbeat
+ */
+export async function sanitizeHistoricalSessions(): Promise<number> {
+  try {
+    const cleanedCount = await prisma.$executeRaw`
+      UPDATE "Session"
+      SET "terminatedAt" = "lastHeartbeat"
+      WHERE "status" = 'terminated'
+        AND "terminatedAt" IS NOT NULL
+        AND "terminatedAt" > "lastHeartbeat" + INTERVAL '5 minutes'
+    `;
+    const count = Number(cleanedCount);
+    if (count > 0) {
+      console.info(`[SessionReaper] 成功清洗 ${count} 条下线时间异常的历史脏会话记录`);
+    }
+    return count;
+  } catch (err) {
+    console.error('[SessionReaper] 清洗历史脏会话记录失败:', err);
+    return 0;
+  }
+}
+
 // 全局单例定时器，防止 Next.js 热重载/多模块引用时启动重复定时任务
 const globalForReaper = global as unknown as { sessionReaperTimer: NodeJS.Timeout | null };
 
@@ -44,8 +69,9 @@ export function startSessionReaper() {
 
   globalForReaper.sessionReaperTimer.unref?.();
 
-  // 启动即先执行一次
+  // 启动即先执行一次收割与历史脏数据清洗
   reapExpiredSessions();
+  sanitizeHistoricalSessions();
 }
 
 export function stopSessionReaper() {
