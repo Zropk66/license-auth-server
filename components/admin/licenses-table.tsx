@@ -12,6 +12,7 @@ import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import CreateLicenseDialog from './create-license-dialog';
 import BatchChangeSoftwareDialog from './batch-change-software-dialog';
+import BatchExtendDialog from './batch-extend-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +49,7 @@ export default function LicensesTable() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isChangeSoftwareOpen, setIsChangeSoftwareOpen] = useState(false);
   const [isResetHwidAlertOpen, setIsResetHwidAlertOpen] = useState(false);
+  const [isExtendDialogOpen, setIsExtendDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
 
@@ -308,6 +310,15 @@ export default function LicensesTable() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-8 text-xs text-blue-600 border-blue-600/20 hover:bg-blue-50 dark:hover:bg-blue-950/20"
+                  disabled={batchLoading}
+                  onClick={() => setIsExtendDialogOpen(true)}
+                >
+                  批量延时
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="h-8 text-xs"
                   disabled={batchLoading}
                   onClick={() => setIsChangeSoftwareOpen(true)}
@@ -476,6 +487,16 @@ export default function LicensesTable() {
       <BatchChangeSoftwareDialog
         open={isChangeSoftwareOpen}
         onOpenChange={setIsChangeSoftwareOpen}
+        selectedIds={selectedIds}
+        onSuccess={() => {
+          setSelectedIds([]);
+          fetchLicenses();
+        }}
+      />
+
+      <BatchExtendDialog
+        open={isExtendDialogOpen}
+        onOpenChange={setIsExtendDialogOpen}
         selectedIds={selectedIds}
         onSuccess={() => {
           setSelectedIds([]);

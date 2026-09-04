@@ -10,13 +10,14 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    const { ids, action, softwareName } = await req.json();
+    const body = await req.json();
+    const { ids, action, softwareName, durationValue, durationUnit } = body;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'Missing or invalid license IDs' }, { status: 400 });
     }
 
-    const validActions = ['revoke', 'suspend', 'active', 'delete', 'change_software', 'reset_hwid'];
+    const validActions = ['revoke', 'suspend', 'active', 'delete', 'change_software', 'reset_hwid', 'extend_duration'];
     if (!validActions.includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
@@ -154,6 +155,94 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({
         success: true,
         message: `已成功重置 ${targetLicenses.length} 个授权的硬件绑定`,
+      });
+    }
+
+    if (action === 'extend_duration') {
+      const numValue = Number(durationValue);
+      if (!Number.isInteger(numValue) || numValue <= 0) {
+        return NextResponse.json({ error: '延长时间必须为大于0的整数' }, { status: 400 });
+      }
+      if (!['minutes', 'hours', 'days'].includes(durationUnit)) {
+        return NextResponse.json({ error: '无效的时间单位' }, { status: 400 });
+      }
+
+      let deltaMinutes = 0;
+      let deltaMs = 0;
+      if (durationUnit === 'minutes') {
+        deltaMinutes = numValue;
+        deltaMs = numValue * 60 * 1000;
+      } else if (durationUnit === 'hours') {
+        deltaMinutes = numValue * 60;
+        deltaMs = numValue * 3600 * 1000;
+      } else if (durationUnit === 'days') {
+        deltaMinutes = numValue * 24 * 60;
+        deltaMs = numValue * 24 * 3600 * 1000;
+      }
+
+      const targetLicenses = await prisma.license.findMany({
+        where: {
+          id: { in: ids },
+          status: { not: 'revoked' },
+        },
+        select: {
+          id: true,
+          status: true,
+          licenseType: true,
+          duration: true,
+          expirationDate: true,
+          activatedAt: true,
+        },
+      });
+
+      if (targetLicenses.length === 0) {
+        return NextResponse.json(
+          { error: '所选授权中没有可延期的记录（已撤销的授权不可延期）' },
+          { status: 400 }
+        );
+      }
+
+      const now = new Date();
+      await prisma.$transaction(async (tx) => {
+        for (const license of targetLicenses) {
+          if (license.licenseType === 'duration' && license.activatedAt === null) {
+            await tx.license.update({
+              where: { id: license.id },
+              data: {
+                duration: (license.duration || 0) + deltaMinutes,
+              },
+            });
+          } else {
+            const baseTime = license.expirationDate > now ? license.expirationDate : now;
+            const newExpirationDate = new Date(baseTime.getTime() + deltaMs);
+            await tx.license.update({
+              where: { id: license.id },
+              data: {
+                expirationDate: newExpirationDate,
+              },
+            });
+          }
+        }
+      });
+
+      await logAction({
+        adminId: authResult.payload.id,
+        action: 'batch_extend_duration',
+        targetType: 'license',
+        targetId: 'multiple',
+        details: {
+          ids,
+          count: targetLicenses.length,
+          durationValue: numValue,
+          durationUnit,
+        },
+      });
+
+      const unitText = durationUnit === 'days' ? '天' : durationUnit === 'hours' ? '小时' : '分钟';
+      return NextResponse.json({
+        success: true,
+        message: `已成功为 ${targetLicenses.length} 个授权延长 ${numValue} ${unitText}`,
+        count: targetLicenses.length,
       });
     }
 
