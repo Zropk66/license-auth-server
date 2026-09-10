@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import AdminLayout from '@/components/admin/admin-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -390,7 +389,7 @@ func (c *LicenseClient) Verify(licenseKey, softwareName, hwid, deviceName string
 `;
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">开发接口与客户端 SDK</h1>
@@ -592,6 +591,6 @@ func (c *LicenseClient) Verify(licenseKey, softwareName, hwid, deviceName string
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
+    </>
   );
 }

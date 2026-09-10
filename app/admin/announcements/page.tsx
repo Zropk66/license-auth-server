@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import AdminLayout from '@/components/admin/admin-layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -89,7 +88,7 @@ export default function AnnouncementsPage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -207,6 +206,6 @@ export default function AnnouncementsPage() {
         announcementToEdit={announcementToEdit}
         onSuccess={fetchAnnouncements}
       />
-    </AdminLayout>
+    </>
   );
 }

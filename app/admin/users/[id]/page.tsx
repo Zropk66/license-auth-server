@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AdminLayout from '@/components/admin/admin-layout';
 import UsersTable from '@/components/admin/users-table';
 import UserDetailsDialog from '@/components/admin/user-details-dialog';
 
@@ -20,7 +19,7 @@ export default function UserDetailsPage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">用户管理</h1>
       </div>
@@ -32,6 +31,6 @@ export default function UserDetailsPage() {
         onOpenChange={handleOpenChange}
         userId={userId}
       />
-    </AdminLayout>
+    </>
   );
 }

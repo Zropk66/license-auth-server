@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import AdminLayout from '@/components/admin/admin-layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -102,7 +101,7 @@ export default function SoftwaresPage() {
   });
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -259,6 +258,6 @@ export default function SoftwaresPage() {
         software={softwareToEdit}
         onSuccess={fetchSoftwares}
       />
-    </AdminLayout>
+    </>
   );
 }

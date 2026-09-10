@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import AdminLayout from '@/components/admin/admin-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -162,36 +161,32 @@ export default function ManagersPage() {
 
   if (authChecking) {
     return (
-      <AdminLayout>
-        <div className="flex justify-center items-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-muted-foreground">正在验证权限...</span>
-        </div>
-      </AdminLayout>
+      <div className="flex justify-center items-center h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <span className="ml-2 text-muted-foreground">正在验证权限...</span>
+      </div>
     );
   }
 
   if (!isOwner) {
     return (
-      <AdminLayout>
-        <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-md mx-auto text-center p-6">
-          <div className="rounded-full bg-destructive/10 p-4 mb-4">
-            <ShieldAlert className="h-12 w-12 text-destructive" />
-          </div>
-          <h2 className="text-2xl font-bold tracking-tight mb-2">访问被拒绝</h2>
-          <p className="text-muted-foreground mb-6">
-            管理员账号管理是受限制的功能。只有系统所有者 (owner) 才能查看或管理此页面。
-          </p>
-          <Button asChild>
-            <a href="/admin/dashboard">返回仪表盘</a>
-          </Button>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-md mx-auto text-center p-6">
+        <div className="rounded-full bg-destructive/10 p-4 mb-4">
+          <ShieldAlert className="h-12 w-12 text-destructive" />
         </div>
-      </AdminLayout>
+        <h2 className="text-2xl font-bold tracking-tight mb-2">访问被拒绝</h2>
+        <p className="text-muted-foreground mb-6">
+          管理员账号管理是受限制的功能。只有系统所有者 (owner) 才能查看或管理此页面。
+        </p>
+        <Button asChild>
+          <a href="/admin/dashboard">返回仪表盘</a>
+        </Button>
+      </div>
     );
   }
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold">管理员管理</h1>
       </div>
@@ -360,6 +355,6 @@ export default function ManagersPage() {
         currentAdminId={currentUser?.id || null}
         onManagerUpdated={handleManagerUpdated}
       />
-    </AdminLayout>
+    </>
   );
 }

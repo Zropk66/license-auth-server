@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import AdminLayout from '@/components/admin/admin-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -84,7 +83,7 @@ export default function BlacklistPage() {
   const autoCount = items.filter((i) => i.isAuto).length;
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
@@ -253,6 +252,6 @@ export default function BlacklistPage() {
         onOpenChange={setDialogOpen}
         onSuccess={fetchBlacklist}
       />
-    </AdminLayout>
+    </>
   );
 }

@@ -87,8 +87,14 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   };
 
   useEffect(() => {
-    fetchAdminInfo();
-  }, []);
+    if (pathname !== '/admin/login') {
+      fetchAdminInfo();
+    }
+  }, [pathname]);
+
+  if (pathname === '/admin/login') {
+    return <>{children}</>;
+  }
 
   const navigation = [
     { name: '仪表盘', href: '/admin/dashboard', icon: LayoutDashboard },
