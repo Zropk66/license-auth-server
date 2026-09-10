@@ -480,6 +480,11 @@ export default function LicenseDetailsDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[760px] max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="sr-only">
+            <DialogTitle>授权详情</DialogTitle>
+            <DialogDescription>查看与管理软件授权密钥详情</DialogDescription>
+          </DialogHeader>
+
           {loading ? (
             <div className="p-6 space-y-4">
               <Skeleton className="h-8 w-1/2" />
