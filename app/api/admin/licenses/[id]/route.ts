@@ -154,6 +154,7 @@ export async function PATCH(
       monthlyUnbindCount?: number;
       duration?: number | null;
       hwid?: string | null;
+      deviceName?: string | null;
       activatedAt?: Date;
     } = {};
 
@@ -210,8 +211,10 @@ export async function PATCH(
       dataToUpdate.duration = updateData.duration;
     }
     // 处理HWID 重置
-    if (updateData.resethwid === true) {
+    const isResetHwid = updateData.resetHwid === true || updateData.resethwid === true;
+    if (isResetHwid) {
       dataToUpdate.hwid = null;
+      dataToUpdate.deviceName = null;
     }
 
     // 确定审计日志的 action 类型
@@ -224,14 +227,14 @@ export async function PATCH(
       } else if (updateData.status === 'active' && license.status === 'suspended') {
         action = license.activatedAt === null ? 'resume_unactivated_license' : 'resume_license';
       }
-    } else if (updateData.resethwid === true) {
+    } else if (isResetHwid) {
       action = 'reset_hwid';
     }
 
     // 更新许可证
     const updatedLicense = await prisma.$transaction(async (tx) => {
       if (
-        updateData.resethwid === true ||
+        isResetHwid ||
         updateData.revoke === true ||
         updateData.status === 'suspended'
       ) {

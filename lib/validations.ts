@@ -64,6 +64,7 @@ export const updateLicenseSchema = z.object({
   addUnbindCount: z.number().int().optional(),
   resetExtraUnbind: z.boolean().optional(),
   duration: z.number().int().positive().optional(),
+  resetHwid: z.boolean().optional(),
   resethwid: z.boolean().optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
