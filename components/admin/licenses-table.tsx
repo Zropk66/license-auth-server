@@ -14,6 +14,7 @@ import CreateLicenseDialog from './create-license-dialog';
 import BatchChangeSoftwareDialog from './batch-change-software-dialog';
 import BatchExtendDialog from './batch-extend-dialog';
 import BatchGenerateDialog from './batch-generate-dialog';
+import LicenseDetailsDialog from './license-details-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +53,8 @@ export default function LicensesTable() {
   const [isChangeSoftwareOpen, setIsChangeSoftwareOpen] = useState(false);
   const [isResetHwidAlertOpen, setIsResetHwidAlertOpen] = useState(false);
   const [isExtendDialogOpen, setIsExtendDialogOpen] = useState(false);
+  const [selectedLicenseId, setSelectedLicenseId] = useState<string | null>(null);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
 
@@ -439,9 +442,12 @@ export default function LicensesTable() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            asChild
+                            onClick={() => {
+                              setSelectedLicenseId(license.id);
+                              setIsDetailsDialogOpen(true);
+                            }}
                           >
-                            <a href={`/admin/licenses/${license.id}`}>查看</a>
+                            查看
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -453,7 +459,14 @@ export default function LicensesTable() {
           </div>
         </CardContent>
       </Card>
-      
+
+      <LicenseDetailsDialog
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        licenseId={selectedLicenseId}
+        onUpdated={fetchLicenses}
+      />
+
       <CreateLicenseDialog
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
