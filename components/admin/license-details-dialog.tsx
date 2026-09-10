@@ -565,7 +565,7 @@ export default function LicenseDetailsDialog({
                   </TabsList>
 
                   {/* ── 标签 1：基本与时效 ── */}
-                  <TabsContent value="info" className="flex-1 overflow-y-auto space-y-4 pt-1 pr-1">
+                  <TabsContent value="info" className="flex-1 overflow-y-auto space-y-4 pt-1 pr-1 animate-in fade-in-50 duration-200">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       <div className="p-3.5 rounded-lg border bg-muted/20 space-y-2.5">
                         <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -638,7 +638,7 @@ export default function LicenseDetailsDialog({
                   </TabsContent>
 
                   {/* ── 标签 2：硬件与解绑 ── */}
-                  <TabsContent value="hardware" className="space-y-4 pt-1">
+                  <TabsContent value="hardware" className="space-y-4 pt-1 animate-in fade-in-50 duration-200">
                     <div className="p-3.5 rounded-lg border bg-muted/20 space-y-3">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs font-semibold flex items-center gap-1.5">
@@ -760,7 +760,7 @@ export default function LicenseDetailsDialog({
                   </TabsContent>
 
                   {/* ── 标签 3：会话历史 ── */}
-                  <TabsContent value="sessions" className="flex-1 flex flex-col min-h-0 space-y-2 pt-1 overflow-hidden">
+                  <TabsContent value="sessions" className="flex-1 flex flex-col min-h-0 space-y-2 pt-1 overflow-hidden animate-in fade-in-50 duration-200">
                     {/* 在线会话列表 */}
                     <div className="flex items-center justify-between text-xs font-semibold shrink-0">
                       <span className="flex items-center gap-1.5">

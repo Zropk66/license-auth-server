@@ -6,6 +6,18 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatOnlyDate, cn } from '@/lib/utils';
+import { motion, useSpring, useTransform } from 'framer-motion';
+
+function AnimatedNumber({ value }: { value: number }) {
+  const spring = useSpring(0, { mass: 0.6, stiffness: 80, damping: 15 });
+  const display = useTransform(spring, (current) => Math.round(current));
+
+  useEffect(() => {
+    spring.set(value);
+  }, [spring, value]);
+
+  return <motion.span>{display}</motion.span>;
+}
 
 type StatsData = {
   totalUsers: number;
@@ -128,21 +140,29 @@ function ActivityBarChart({ data }: { data: { date: string; created: number; act
                   rx={4}
                 />
 
-                <rect
+                <motion.rect
                   x={centerX - barWidth - 2}
-                  y={createdHeight > 0 ? createdY : paddingTop + plotHeight - 2}
+                  initial={{ height: 0, y: paddingTop + plotHeight }}
+                  animate={{
+                    height: createdHeight > 0 ? createdHeight : 2,
+                    y: createdHeight > 0 ? createdY : paddingTop + plotHeight - 2,
+                  }}
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
                   width={barWidth}
-                  height={createdHeight > 0 ? createdHeight : 2}
                   fill="#3b82f6"
                   rx={createdHeight > 3 ? 3 : 0}
                   className="transition-all duration-300 hover:brightness-110"
                 />
 
-                <rect
+                <motion.rect
                   x={centerX + 2}
-                  y={activatedHeight > 0 ? activatedY : paddingTop + plotHeight - 2}
+                  initial={{ height: 0, y: paddingTop + plotHeight }}
+                  animate={{
+                    height: activatedHeight > 0 ? activatedHeight : 2,
+                    y: activatedHeight > 0 ? activatedY : paddingTop + plotHeight - 2,
+                  }}
+                  transition={{ duration: 0.5, ease: 'easeOut' }}
                   width={barWidth}
-                  height={activatedHeight > 0 ? activatedHeight : 2}
                   fill="#10b981"
                   rx={activatedHeight > 3 ? 3 : 0}
                   className="transition-all duration-300 hover:brightness-110"
@@ -311,8 +331,13 @@ export default function DashboardStats() {
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
-        <Card>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8"
+      >
+        <Card className="transition-all duration-200 hover:shadow-sm hover:border-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center">
               <User className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -321,11 +346,13 @@ export default function DashboardStats() {
             <CardDescription>所有已注册用户</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{placeholderStats.totalUsers}</div>
+            <div className="text-2xl font-bold">
+              <AnimatedNumber value={placeholderStats.totalUsers} />
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="transition-all duration-200 hover:shadow-sm hover:border-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center">
               <License className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -334,11 +361,13 @@ export default function DashboardStats() {
             <CardDescription>所有已生成的授权密钥</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{placeholderStats.totalLicenses}</div>
+            <div className="text-2xl font-bold">
+              <AnimatedNumber value={placeholderStats.totalLicenses} />
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="transition-all duration-200 hover:shadow-sm hover:border-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center">
               <CheckCircle className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -347,16 +376,16 @@ export default function DashboardStats() {
             <CardDescription>拥有有效授权的用户</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {placeholderStats.activeUsers}
+            <div className="text-2xl font-bold flex items-baseline">
+              <AnimatedNumber value={placeholderStats.activeUsers} />
               <span className="text-sm font-normal text-muted-foreground ml-2">
-                ({placeholderStats.activeUsersPercent}%)
+                (<AnimatedNumber value={placeholderStats.activeUsersPercent} />%)
               </span>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="transition-all duration-200 hover:shadow-sm hover:border-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center">
               <Activity className="h-4 w-4 mr-2 text-muted-foreground text-emerald-500 animate-pulse" />
@@ -365,11 +394,13 @@ export default function DashboardStats() {
             <CardDescription>当前在线活动客户端</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{placeholderStats.onlineSessions}</div>
+            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              <AnimatedNumber value={placeholderStats.onlineSessions} />
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="transition-all duration-200 hover:shadow-sm hover:border-primary/20">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center">
               <AlertCircle className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -378,12 +409,14 @@ export default function DashboardStats() {
             <CardDescription>30天内到期的授权</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{placeholderStats.expiringSoonLicenses}</div>
+            <div className="text-2xl font-bold">
+              <AnimatedNumber value={placeholderStats.expiringSoonLicenses} />
+            </div>
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
 
-      <Card className="mb-8">
+      <Card className="mb-8 transition-all duration-200 hover:shadow-sm">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <CardTitle className="text-lg flex items-center">
@@ -464,11 +497,11 @@ export default function DashboardStats() {
           <CardContent className="space-y-4">
             <div className="flex justify-between items-center pb-2 border-b">
               <span className="text-sm font-medium">即时卡 (固定过期)</span>
-              <span className="font-semibold">{placeholderStats.types.fixed} 个</span>
+              <span className="font-semibold"><AnimatedNumber value={placeholderStats.types.fixed} /> 个</span>
             </div>
             <div className="flex justify-between items-center pb-2 border-b">
               <span className="text-sm font-medium">激活卡 (时长起算)</span>
-              <span className="font-semibold">{placeholderStats.types.duration} 个</span>
+              <span className="font-semibold"><AnimatedNumber value={placeholderStats.types.duration} /> 个</span>
             </div>
           </CardContent>
         </Card>
@@ -481,23 +514,33 @@ export default function DashboardStats() {
           <CardContent className="grid grid-cols-2 gap-4">
             <div className="flex flex-col p-3 border rounded-lg bg-emerald-500/5 border-emerald-500/10">
               <span className="text-xs text-muted-foreground">有效授权</span>
-              <span className="text-lg font-bold text-emerald-600">{placeholderStats.statuses.valid}</span>
+              <span className="text-lg font-bold text-emerald-600">
+                <AnimatedNumber value={placeholderStats.statuses.valid} />
+              </span>
             </div>
             <div className="flex flex-col p-3 border rounded-lg bg-yellow-500/5 border-yellow-500/10">
               <span className="text-xs text-muted-foreground">待激活</span>
-              <span className="text-lg font-bold text-yellow-600">{placeholderStats.statuses.unactivated}</span>
+              <span className="text-lg font-bold text-yellow-600">
+                <AnimatedNumber value={placeholderStats.statuses.unactivated} />
+              </span>
             </div>
             <div className="flex flex-col p-3 border rounded-lg bg-rose-500/5 border-rose-500/10">
               <span className="text-xs text-muted-foreground">已到期</span>
-              <span className="text-lg font-bold text-rose-600">{placeholderStats.statuses.expired}</span>
+              <span className="text-lg font-bold text-rose-600">
+                <AnimatedNumber value={placeholderStats.statuses.expired} />
+              </span>
             </div>
             <div className="flex flex-col p-3 border rounded-lg bg-slate-500/5 border-slate-500/10">
               <span className="text-xs text-muted-foreground">已冻结</span>
-              <span className="text-lg font-bold text-slate-600">{placeholderStats.statuses.suspended}</span>
+              <span className="text-lg font-bold text-slate-600">
+                <AnimatedNumber value={placeholderStats.statuses.suspended} />
+              </span>
             </div>
             <div className="flex flex-col p-3 border rounded-lg bg-red-500/5 border-red-500/10 col-span-2">
               <span className="text-xs text-muted-foreground">已撤销</span>
-              <span className="text-lg font-bold text-red-600">{placeholderStats.statuses.revoked}</span>
+              <span className="text-lg font-bold text-red-600">
+                <AnimatedNumber value={placeholderStats.statuses.revoked} />
+              </span>
             </div>
           </CardContent>
         </Card>

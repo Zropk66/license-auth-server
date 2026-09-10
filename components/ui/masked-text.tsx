@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export interface MaskedTextProps {
   value: string;
@@ -179,6 +181,19 @@ export function MaskedText({
           onTouchCancel={handleEnd}
         >
           {revealed ? value : maskValue(value, head, tail)}
+          <AnimatePresence>
+            {copied && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.5, width: 0 }}
+                animate={{ opacity: 1, scale: 1, width: 'auto' }}
+                exit={{ opacity: 0, scale: 0.5, width: 0 }}
+                transition={{ duration: 0.15 }}
+                className="inline-flex items-center ml-1 text-green-600 dark:text-green-400"
+              >
+                <Check className="h-3 w-3" />
+              </motion.span>
+            )}
+          </AnimatePresence>
         </span>
       </TooltipTrigger>
       <TooltipContent
