@@ -13,8 +13,8 @@ import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
-  password: z.string().refine((val) => val === '' || val.length >= 6, {
-    message: '密码至少需要6个字符',
+  password: z.string().refine((val) => val === '' || val.length >= 8, {
+    message: '新密码长度至少需要 8 位字符',
   }),
   role: z.enum(['admin', 'owner']),
 });
@@ -156,7 +156,7 @@ export default function EditManagerDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="admin">普通管理员 (admin)</SelectItem>
+                      <SelectItem value="admin">管理员 (admin)</SelectItem>
                       <SelectItem value="owner">系统所有者 (owner)</SelectItem>
                     </SelectContent>
                   </Select>

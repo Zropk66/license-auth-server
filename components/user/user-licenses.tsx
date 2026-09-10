@@ -65,15 +65,17 @@ export default function UserLicenses() {
 
   const getLicenseStatus = (license: License) => {
     if (license.status === "revoked") {
-      return { label: "撤销", variant: "destructive" as const };
+      return { label: "撤销", variant: "destructive" as const, className: "" };
     } else if (license.status === "suspended") {
-      return { label: "冻结", variant: "secondary" as const };
+      return { label: "冻结", variant: "secondary" as const, className: "" };
     } else if (license.status === "unactivated") {
-      return { label: "待激活", variant: "outline" as const };
+      return { label: "待激活", variant: "outline" as const, className: "" };
     } else if (isExpired(license.expirationDate)) {
-      return { label: "到期", variant: "destructive" as const };
+      return { label: "到期", variant: "destructive" as const, className: "" };
+    } else if (new Date(license.expirationDate).getFullYear() >= 2099) {
+      return { label: "永久", variant: "default" as const, className: "bg-purple-600 hover:bg-purple-700 text-white" };
     } else {
-      return { label: "有效", variant: "default" as const };
+      return { label: "有效", variant: "default" as const, className: "" };
     }
   };
 
@@ -175,10 +177,16 @@ export default function UserLicenses() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {license.activatedAt ? formatDate(license.expirationDate) : '-'}
+                        {license.activatedAt ? (
+                          new Date(license.expirationDate).getFullYear() >= 2099 ? (
+                            <span className="text-purple-600 dark:text-purple-400 font-medium">永久有效</span>
+                          ) : (
+                            formatDate(license.expirationDate)
+                          )
+                        ) : '-'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={status.variant}>
+                        <Badge variant={status.variant} className={status.className}>
                           {status.label}
                         </Badge>
                       </TableCell>

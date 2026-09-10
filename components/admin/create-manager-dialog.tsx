@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
   username: z.string().min(3, '用户名至少需要3个字符'),
-  password: z.string().min(6, '密码至少需要6个字符'),
+  password: z.string().min(8, '密码长度至少需要8位字符'),
   role: z.enum(['admin', 'owner'], {
     required_error: '请选择管理员角色',
   }),
@@ -143,7 +143,7 @@ export default function CreateManagerDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="admin">普通管理员 (admin)</SelectItem>
+                      <SelectItem value="admin">管理员 (admin)</SelectItem>
                       <SelectItem value="owner">系统所有者 (owner)</SelectItem>
                     </SelectContent>
                   </Select>

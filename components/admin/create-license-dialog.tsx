@@ -18,6 +18,32 @@ import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const formatDateForInput = (d?: Date | null) => {
+  if (!d || isNaN(d.getTime())) return '';
+  return format(d, 'yyyy-MM-dd HH:mm');
+};
+
+const parseDateFromInput = (str: string): Date | null => {
+  if (!str.trim()) return null;
+  const cleanStr = str.trim().replace(/\//g, '-');
+  const d = new Date(cleanStr);
+  if (!isNaN(d.getTime())) return d;
+  const match = cleanStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (match) {
+    const [_, y, m, day, h, min, s] = match;
+    const parsed = new Date(
+      parseInt(y, 10),
+      parseInt(m, 10) - 1,
+      parseInt(day, 10),
+      h ? parseInt(h, 10) : 0,
+      min ? parseInt(min, 10) : 0,
+      s ? parseInt(s, 10) : 0
+    );
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+};
+
 const formSchema = z.object({
   userId: z.string().min(1, '请选择用户'),
   softwareName: z.string().min(1, '请选择所属软件'),
@@ -78,6 +104,10 @@ export default function CreateLicenseDialog({
   const [loadingSoftwares, setLoadingSoftwares] = useState(false);
   const [globalUnbindEnabled, setGlobalUnbindEnabled] = useState(false);
   const [globalDefaultAllow, setGlobalDefaultAllow] = useState(false);
+  const [dateInputText, setDateInputText] = useState('');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
+  const defaultExp = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -85,7 +115,7 @@ export default function CreateLicenseDialog({
       userId: '',
       softwareName: '',
       licenseType: 'fixed',
-      expirationDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+      expirationDate: defaultExp,
       durationValue: 30,
       durationUnit: 'days',
       hardwareBindingEnabled: false,
@@ -101,6 +131,7 @@ export default function CreateLicenseDialog({
       fetchUsers();
       fetchSoftwares();
       fetchGlobalSettings();
+      setDateInputText(formatDateForInput(defaultExp));
     }
   }, [open]);
 
@@ -358,6 +389,7 @@ export default function CreateLicenseDialog({
                     newDate.setSeconds(0);
                     newDate.setMilliseconds(0);
                     field.onChange(newDate);
+                    setDateInputText(formatDateForInput(newDate));
                   };
 
                   const handleHoursChange = (hStr: string) => {
@@ -365,6 +397,7 @@ export default function CreateLicenseDialog({
                     const newDate = new Date(currentDate);
                     newDate.setHours(h);
                     field.onChange(newDate);
+                    setDateInputText(formatDateForInput(newDate));
                   };
 
                   const handleMinutesChange = (mStr: string) => {
@@ -372,88 +405,125 @@ export default function CreateLicenseDialog({
                     const newDate = new Date(currentDate);
                     newDate.setMinutes(m);
                     field.onChange(newDate);
+                    setDateInputText(formatDateForInput(newDate));
+                  };
+
+                  const handleSetPermanent = () => {
+                    const permDate = new Date(2099, 11, 31, 23, 59, 59, 0);
+                    field.onChange(permDate);
+                    setDateInputText(formatDateForInput(permDate));
                   };
 
                   return (
                     <FormItem className="flex flex-col">
                       <FormLabel>到期时间</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                              disabled={isSubmitting}
-                            >
-                              {field.value ? (
-                                format(field.value, "yyyy年MM月dd日 HH:mm")
-                              ) : (
-                                <span>选择日期</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 flex flex-row" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={handleDateChange}
-                            disabled={(date) => {
-                              const today = new Date();
-                              today.setHours(0, 0, 0, 0);
-                              return date < today;
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            value={dateInputText}
+                            onChange={(e) => {
+                              setDateInputText(e.target.value);
+                              const parsed = parseDateFromInput(e.target.value);
+                              if (parsed) {
+                                field.onChange(parsed);
+                              }
                             }}
-                            initialFocus
+                            onBlur={() => {
+                              const parsed = parseDateFromInput(dateInputText);
+                              if (parsed) {
+                                field.onChange(parsed);
+                                setDateInputText(formatDateForInput(parsed));
+                              } else if (field.value) {
+                                setDateInputText(formatDateForInput(field.value));
+                              }
+                            }}
+                            placeholder="YYYY-MM-DD HH:mm"
+                            disabled={isSubmitting}
+                            className="font-mono text-sm"
                           />
-                          <div className="flex flex-col justify-center border-l border-border px-4 py-2 gap-3 bg-muted/10 w-32">
-                            <div className="text-xs font-semibold text-muted-foreground text-center">具体时间</div>
-                            <div className="flex flex-col gap-2 items-center">
-                              <div className="flex items-center gap-1">
-                                <select
-                                  value={String(hours).padStart(2, '0')}
-                                  onChange={(e) => handleHoursChange(e.target.value)}
-                                  disabled={isSubmitting}
-                                  className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
-                                >
-                                  {Array.from({ length: 24 }, (_, i) => {
-                                    const val = String(i).padStart(2, '0');
-                                    return (
-                                      <option key={val} value={val}>
-                                        {val}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                                <span className="text-xs font-medium text-muted-foreground">时</span>
+                        </FormControl>
+                        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              disabled={isSubmitting}
+                              title="打开时间选择器"
+                              className="shrink-0"
+                            >
+                              <CalendarIcon className="h-4 w-4 opacity-70" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 flex flex-row" align="end">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={handleDateChange}
+                              disabled={(date) => {
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                return date < today;
+                              }}
+                              initialFocus
+                            />
+                            <div className="flex flex-col justify-between border-l border-border p-3 bg-muted/10 w-36">
+                              <div className="space-y-3">
+                                <div className="text-xs font-semibold text-muted-foreground text-center">具体时间</div>
+                                <div className="flex flex-col gap-2 items-center">
+                                  <div className="flex items-center gap-1">
+                                    <select
+                                      value={String(hours).padStart(2, '0')}
+                                      onChange={(e) => handleHoursChange(e.target.value)}
+                                      disabled={isSubmitting}
+                                      className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
+                                    >
+                                      {Array.from({ length: 24 }, (_, i) => {
+                                        const val = String(i).padStart(2, '0');
+                                        return (
+                                          <option key={val} value={val}>
+                                            {val}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    <span className="text-xs font-medium text-muted-foreground">时</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <select
+                                      value={String(minutes).padStart(2, '0')}
+                                      onChange={(e) => handleMinutesChange(e.target.value)}
+                                      disabled={isSubmitting}
+                                      className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
+                                    >
+                                      {Array.from({ length: 60 }, (_, i) => {
+                                        const val = String(i).padStart(2, '0');
+                                        return (
+                                          <option key={val} value={val}>
+                                            {val}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    <span className="text-xs font-medium text-muted-foreground">分</span>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <select
-                                  value={String(minutes).padStart(2, '0')}
-                                  onChange={(e) => handleMinutesChange(e.target.value)}
-                                  disabled={isSubmitting}
-                                  className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
-                                >
-                                  {Array.from({ length: 60 }, (_, i) => {
-                                    const val = String(i).padStart(2, '0');
-                                    return (
-                                      <option key={val} value={val}>
-                                        {val}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                                <span className="text-xs font-medium text-muted-foreground">分</span>
-                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="w-full text-xs h-7 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/60 hover:bg-purple-50 dark:hover:bg-purple-950/30 font-medium whitespace-nowrap"
+                                onClick={handleSetPermanent}
+                              >
+                                设为永久
+                              </Button>
                             </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                       <FormDescription>
-                        授权将在所选时间的具体分秒失效。
+                        支持直接手动输入或点击日历图标选择时间。
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

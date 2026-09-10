@@ -3,6 +3,7 @@ import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { updateManagerSchema } from '@/lib/validations';
+import { checkPasswordPolicy } from '@/lib/password-policy';
 
 export async function PUT(
   req: NextRequest,
@@ -58,7 +59,13 @@ export async function PUT(
     const updateData: { password?: string; role?: string } = {};
 
     if (password) {
-      // 使用 12 rounds 进行 bcrypt 哈希
+      const policyCheck = await checkPasswordPolicy(password);
+      if (!policyCheck.valid) {
+        return NextResponse.json(
+          { error: policyCheck.message || '密码不符合当前安全策略要求' },
+          { status: 400 }
+        );
+      }
       updateData.password = await bcrypt.hash(password, 12);
     }
 

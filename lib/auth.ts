@@ -28,13 +28,13 @@ function getJwtSecret(): Uint8Array {
 }
 
 // JWT Helpers
-export async function signJWT(payload: JWTPayload): Promise<string> {
+export async function signJWT(payload: JWTPayload, expiresIn: string = '7d'): Promise<string> {
   const secret = getJwtSecret();
 
   return new SignJWT(payload as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('1h')
+    .setExpirationTime(expiresIn)
     .setIssuer(JWT_ISSUER)
     .setAudience(JWT_AUDIENCE)
     .sign(secret);
@@ -66,9 +66,14 @@ export async function verifyJWT(token: string): Promise<JWTPayload | null> {
 }
 
 // Auth Helpers
-export async function getSession() {
+export async function getSession(type?: 'admin' | 'user') {
   const cookieStore = await cookies();
-  const token = cookieStore.get('auth_token')?.value;
+  const token =
+    (type === 'admin' && cookieStore.get('admin_auth_token')?.value) ||
+    (type === 'user' && cookieStore.get('user_auth_token')?.value) ||
+    cookieStore.get('admin_auth_token')?.value ||
+    cookieStore.get('user_auth_token')?.value ||
+    cookieStore.get('auth_token')?.value;
 
   if (!token) return null;
 
@@ -76,7 +81,9 @@ export async function getSession() {
 }
 
 export async function validateAdminAuth(req: NextRequest) {
-  const token = req.cookies.get('auth_token')?.value;
+  const token =
+    req.cookies.get('admin_auth_token')?.value ||
+    req.cookies.get('auth_token')?.value;
 
   if (!token) {
     return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
@@ -98,7 +105,9 @@ export async function validateAdminAuth(req: NextRequest) {
 }
 
 export async function validateUserAuth(req: NextRequest) {
-  const token = req.cookies.get('auth_token')?.value;
+  const token =
+    req.cookies.get('user_auth_token')?.value ||
+    req.cookies.get('auth_token')?.value;
 
   if (!token) {
     return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
@@ -120,7 +129,7 @@ export async function validateUserAuth(req: NextRequest) {
 }
 
 export async function requireAdminAuth() {
-  const session = await getSession();
+  const session = await getSession('admin');
 
   if (!session || session.type !== 'admin') {
     redirect('/admin/login');
@@ -130,7 +139,7 @@ export async function requireAdminAuth() {
 }
 
 export async function requireUserAuth() {
-  const session = await getSession();
+  const session = await getSession('user');
 
   if (!session || session.type !== 'user') {
     redirect('/user/login');

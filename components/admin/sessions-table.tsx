@@ -44,15 +44,26 @@ export default function SessionsTable() {
   const [isKicking, setIsKicking] = useState(false);
 
   useEffect(() => {
-    // 首次加载展示 loading 状态
     fetchSessions(true);
 
-    // 每 5 秒自动静默更新数据，表格不闪烁
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchSessions(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const timer = setInterval(() => {
-      fetchSessions(false);
+      if (document.visibilityState === 'visible') {
+        fetchSessions(false);
+      }
     }, 5000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const fetchSessions = async (showLoading = false) => {
@@ -62,17 +73,24 @@ export default function SessionsTable() {
       const data = await response.json();
 
       if (response.ok) {
-        setSessions(data);
-      } else {
+        setSessions(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+          return data;
+        });
+      } else if (showLoading) {
         throw new Error(data.error || '获取在线会话失败');
       }
     } catch (error) {
-      console.error('Error fetching sessions:', error);
-      toast({
-        title: '错误',
-        description: '获取在线会话列表失败',
-        variant: 'destructive',
-      });
+      if (showLoading) {
+        console.error('Error fetching sessions:', error);
+        toast({
+          title: '错误',
+          description: '获取在线会话列表失败',
+          variant: 'destructive',
+        });
+      } else {
+        console.warn('Silent refresh sessions failed:', error);
+      }
     } finally {
       if (showLoading) setLoading(false);
     }

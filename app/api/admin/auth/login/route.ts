@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     const blacklistCheck = await isBlacklisted(ip);
     if (blacklistCheck.blacklisted) {
       return NextResponse.json(
-        { error: 'Access denied: IP is blacklisted', reason: blacklistCheck.reason },
+        { error: '访问被拒绝：IP 已被封禁', reason: blacklistCheck.reason },
         { status: 403 }
       );
     }
@@ -73,16 +73,15 @@ export async function POST(req: NextRequest) {
         if (process.env.SETUP_TOKEN) {
           if (!setupToken || setupToken !== process.env.SETUP_TOKEN) {
             return NextResponse.json(
-              { error: 'Invalid setup token' },
+              { error: '初始设置令牌无效' },
               { status: 403 }
             );
           }
         }
 
-        // 密码强度校验：至少 6 字符
         if (password.length < 6) {
           return NextResponse.json(
-            { error: 'Password must be at least 6 characters' },
+            { error: '密码长度至少为 6 个字符' },
             { status: 400 }
           );
         }
@@ -115,21 +114,30 @@ export async function POST(req: NextRequest) {
           type: 'admin',
         });
 
-        // 设置 cookie
         const response = NextResponse.json(
           { success: true, message: 'Success' },
           { status: 201 }
         );
 
-        const isSecure = req.headers.get('x-forwarded-proto') === 'https';
+        const isHttps = req.nextUrl.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
+        const isSecure = process.env.NODE_ENV === 'production' && isHttps;
+        const cookieOptions = {
+          httpOnly: true,
+          secure: isSecure,
+          sameSite: 'lax' as const,
+          path: '/',
+          maxAge: 7 * 24 * 60 * 60,
+        };
+
+        response.cookies.set({
+          name: 'admin_auth_token',
+          value: token,
+          ...cookieOptions,
+        });
         response.cookies.set({
           name: 'auth_token',
           value: token,
-          httpOnly: true,
-          secure: isSecure,
-          sameSite: 'lax',
-          path: '/',
-          maxAge: 60 * 60, // 1 小时
+          ...cookieOptions,
         });
 
         return response;
@@ -145,7 +153,7 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: '用户名或密码错误' },
         { status: 401 }
       );
     }
@@ -162,7 +170,7 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { error: 'Invalid credentials' },
+        { error: '用户名或密码错误' },
         { status: 401 }
       );
     }
@@ -190,21 +198,30 @@ export async function POST(req: NextRequest) {
       metadata: { adminId: admin.id, username: admin.username, ip },
     }).catch(() => {});
 
-    // 设置 cookie
     const response = NextResponse.json(
       { success: true },
       { status: 200 }
     );
 
-    const isSecure = req.headers.get('x-forwarded-proto') === 'https';
+    const isHttps = req.nextUrl.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
+    const isSecure = process.env.NODE_ENV === 'production' && isHttps;
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: 'lax' as const,
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60,
+    };
+
+    response.cookies.set({
+      name: 'admin_auth_token',
+      value: token,
+      ...cookieOptions,
+    });
     response.cookies.set({
       name: 'auth_token',
       value: token,
-      httpOnly: true,
-      secure: isSecure,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60, // 1 小时
+      ...cookieOptions,
     });
 
     return response;
@@ -212,7 +229,7 @@ export async function POST(req: NextRequest) {
     console.error('Login error:', error);
 
     return NextResponse.json(
-      { error: 'An unexpected error occurred' },
+      { error: '登录发生未知错误，请重试' },
       { status: 500 }
     );
   }

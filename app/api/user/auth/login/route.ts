@@ -65,19 +65,17 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { error: 'Invalid user hash' },
+        { error: '用户特征码不存在或无效' },
         { status: 401 }
       );
     }
 
-    // 创建 JWT
     const token = await signJWT({
       id: user.id,
       username: user.username,
       type: 'user',
     });
 
-    // 审计日志：用户登录成功
     await logAction({
       adminId: null,
       action: 'user_login_success',
@@ -86,21 +84,25 @@ export async function POST(req: NextRequest) {
       details: { username: user.username, ip },
     });
 
-    // 设置 cookie
     const response = NextResponse.json(
       { success: true },
       { status: 200 }
     );
 
-    const isSecure = req.headers.get('x-forwarded-proto') === 'https';
-    response.cookies.set({
-      name: 'auth_token',
-      value: token,
+    const isHttps = req.nextUrl.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
+    const isSecure = process.env.NODE_ENV === 'production' && isHttps;
+    const cookieOptions = {
       httpOnly: true,
       secure: isSecure,
-      sameSite: 'lax',
+      sameSite: 'lax' as const,
       path: '/',
-      maxAge: 60 * 60, // 1 小时
+      maxAge: 7 * 24 * 60 * 60,
+    };
+
+    response.cookies.set({
+      name: 'user_auth_token',
+      value: token,
+      ...cookieOptions,
     });
 
     return response;
@@ -108,7 +110,7 @@ export async function POST(req: NextRequest) {
     console.error('Login error:', error);
 
     return NextResponse.json(
-      { error: 'An unexpected error occurred' },
+      { error: '登录发生未知错误，请重试' },
       { status: 500 }
     );
   }

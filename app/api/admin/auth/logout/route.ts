@@ -4,11 +4,14 @@ import { logAction } from '@/lib/audit';
 import { getClientIP } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
-  const isSecure = req.headers.get('x-forwarded-proto') === 'https';
+  const isHttps = req.nextUrl.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
+  const isSecure = process.env.NODE_ENV === 'production' && isHttps;
   const ip = getClientIP(req);
 
-  // 尝试从 cookie 中提取管理员信息以记录审计日志
-  const token = req.cookies.get('auth_token')?.value;
+  const token =
+    req.cookies.get('admin_auth_token')?.value ||
+    req.cookies.get('auth_token')?.value;
+
   if (token) {
     const payload = await verifyJWT(token);
     if (payload && payload.type === 'admin') {
@@ -24,15 +27,24 @@ export async function POST(req: NextRequest) {
 
   const response = NextResponse.json({ success: true });
 
-  // Clear the auth cookie (attributes aligned with login)
+  const clearOptions = {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: 0,
+  };
+
+  response.cookies.set({
+    name: 'admin_auth_token',
+    value: '',
+    ...clearOptions,
+  });
+
   response.cookies.set({
     name: 'auth_token',
     value: '',
-    httpOnly: true,
-    secure: isSecure,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
+    ...clearOptions,
   });
 
   return response;

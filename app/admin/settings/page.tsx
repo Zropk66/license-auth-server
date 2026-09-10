@@ -62,7 +62,7 @@ export default function SettingsPage() {
     fetch('/api/admin/me')
       .then((res) => res.json())
       .then((data) => {
-        if (data.role !== 'owner') {
+        if (!data || (data.role !== 'owner' && data.role !== 'admin')) {
           router.replace('/admin/dashboard');
         }
       })

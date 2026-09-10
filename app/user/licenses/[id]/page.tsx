@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Key, Copy, Calendar, Server, Smartphone, Loader2, Monitor, Clock, ShieldAlert } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 
@@ -141,17 +141,19 @@ export default function UserLicenseDetailsPage() {
   };
 
   const getLicenseStatus = () => {
-    if (!license) return { label: "未知", variant: "outline" as const };
+    if (!license) return { label: "未知", variant: "outline" as const, className: "" };
     if (license.status === "revoked") {
-      return { label: "撤销", variant: "destructive" as const };
+      return { label: "撤销", variant: "destructive" as const, className: "" };
     } else if (license.status === "suspended") {
-      return { label: "冻结", variant: "secondary" as const };
+      return { label: "冻结", variant: "secondary" as const, className: "" };
     } else if (license.status === "unactivated") {
-      return { label: "待激活", variant: "outline" as const };
+      return { label: "待激活", variant: "outline" as const, className: "" };
     } else if (isExpired(license.expirationDate)) {
-      return { label: "到期", variant: "destructive" as const };
+      return { label: "到期", variant: "destructive" as const, className: "" };
+    } else if (new Date(license.expirationDate).getFullYear() >= 2099) {
+      return { label: "永久", variant: "default" as const, className: "bg-purple-600 hover:bg-purple-700 text-white" };
     } else {
-      return { label: "有效", variant: "default" as const };
+      return { label: "有效", variant: "default" as const, className: "" };
     }
   };
 
@@ -167,6 +169,7 @@ export default function UserLicenseDetailsPage() {
     if (!license) return null;
     const now = new Date();
     const expiry = new Date(license.expirationDate);
+    const isPermanent = expiry.getFullYear() >= 2099;
 
     let totalMins = 0;
 
@@ -186,8 +189,8 @@ export default function UserLicenseDetailsPage() {
 
     return {
       usedStr: formatDuration(usedMins),
-      totalStr: formatDuration(totalMins),
-      percent: totalMins > 0 ? Math.min(100, Math.round((usedMins / totalMins) * 100)) : 0
+      totalStr: isPermanent ? '永久' : formatDuration(totalMins),
+      percent: isPermanent ? 100 : (totalMins > 0 ? Math.min(100, Math.round((usedMins / totalMins) * 100)) : 0)
     };
   };
 
@@ -247,7 +250,7 @@ export default function UserLicenseDetailsPage() {
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant={status.variant}>
+                  <Badge variant={status.variant} className={status.className}>
                     {status.label}
                   </Badge>
                   <Badge
@@ -286,11 +289,13 @@ export default function UserLicenseDetailsPage() {
                       <div>
                         <h3 className="font-medium">授权状态</h3>
                         <p className="text-sm text-muted-foreground">
-                          您的授权还有 {getDaysRemaining(license.expirationDate)} 天有效期
+                          {new Date(license.expirationDate).getFullYear() >= 2099
+                            ? '您的授权为永久有效授权'
+                            : `您的授权还有 ${getDaysRemaining(license.expirationDate)} 天有效期`}
                         </p>
                       </div>
-                      <Badge variant="default" className="text-xs">
-                        有效
+                      <Badge variant="default" className={cn("text-xs", status.className)}>
+                        {status.label}
                       </Badge>
                     </div>
                   </CardContent>
@@ -399,6 +404,10 @@ export default function UserLicenseDetailsPage() {
                       ) : license?.expirationDate && isExpired(license.expirationDate) ? (
                         <span className="text-destructive font-medium">
                           {formatDate(license.expirationDate)} (到期)
+                        </span>
+                      ) : license?.expirationDate && new Date(license.expirationDate).getFullYear() >= 2099 ? (
+                        <span className="text-purple-600 dark:text-purple-400 font-medium">
+                          永久有效 (2099-12-31 23:59)
                         </span>
                       ) : license?.expirationDate ? (
                         <span className="text-green-600 font-medium">

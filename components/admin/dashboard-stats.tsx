@@ -1,21 +1,11 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, Dice1 as License, Clock, CheckCircle, AlertCircle, Activity } from 'lucide-react';
+import { User, Dice1 as License, Clock, CheckCircle, AlertCircle, Activity, BarChart3, Table as TableIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts';
-import { formatDate, formatOnlyDate } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { formatOnlyDate, cn } from '@/lib/utils';
 
 type StatsData = {
   totalUsers: number;
@@ -42,33 +32,233 @@ type StatsData = {
   };
 };
 
+function ActivityBarChart({ data }: { data: { date: string; created: number; activated: number }[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const maxVal = Math.max(5, ...data.map((d) => Math.max(d.created, d.activated)));
+  const yMax = Math.ceil(maxVal / 5) * 5;
+
+  const chartHeight = 180;
+  const chartWidth = 600;
+  const paddingLeft = 40;
+  const paddingRight = 20;
+  const paddingTop = 24;
+  const paddingBottom = 36;
+
+  const plotWidth = chartWidth - paddingLeft - paddingRight;
+  const plotHeight = chartHeight;
+
+  const yTicks = [0, Math.round(yMax * 0.25), Math.round(yMax * 0.5), Math.round(yMax * 0.75), yMax];
+  const groupWidth = plotWidth / Math.max(1, data.length);
+  const barWidth = Math.min(20, groupWidth * 0.32);
+
+  return (
+    <div className="w-full flex flex-col items-center select-none">
+      <div className="flex items-center justify-center gap-6 mb-3 text-xs font-medium">
+        <div className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-sm bg-blue-500 inline-block" />
+          <span>新生成授权</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-sm bg-emerald-500 inline-block" />
+          <span>新激活授权</span>
+        </div>
+      </div>
+
+      <div className="relative w-full max-w-[700px]">
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight + paddingTop + paddingBottom}`}
+          className="w-full h-auto overflow-visible"
+        >
+          {yTicks.map((tick) => {
+            const y = paddingTop + plotHeight - (tick / yMax) * plotHeight;
+            return (
+              <g key={tick} className="text-muted-foreground">
+                <line
+                  x1={paddingLeft}
+                  y1={y}
+                  x2={chartWidth - paddingRight}
+                  y2={y}
+                  stroke="currentColor"
+                  strokeOpacity={0.15}
+                  strokeDasharray="4 4"
+                />
+                <text
+                  x={paddingLeft - 8}
+                  y={y + 4}
+                  textAnchor="end"
+                  fill="currentColor"
+                  className="font-mono text-[10px]"
+                >
+                  {tick}
+                </text>
+              </g>
+            );
+          })}
+
+          {data.map((item, idx) => {
+            const groupX = paddingLeft + idx * groupWidth;
+            const centerX = groupX + groupWidth / 2;
+
+            const createdHeight = (item.created / yMax) * plotHeight;
+            const createdY = paddingTop + plotHeight - createdHeight;
+
+            const activatedHeight = (item.activated / yMax) * plotHeight;
+            const activatedY = paddingTop + plotHeight - activatedHeight;
+
+            const isHovered = hoveredIndex === idx;
+
+            return (
+              <g
+                key={item.date}
+                onMouseEnter={() => setHoveredIndex(idx)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                className="cursor-pointer"
+              >
+                <rect
+                  x={groupX + 2}
+                  y={paddingTop}
+                  width={groupWidth - 4}
+                  height={plotHeight}
+                  fill="currentColor"
+                  className={cn(
+                    "text-muted/20 transition-opacity rounded",
+                    isHovered ? "opacity-100" : "opacity-0"
+                  )}
+                  rx={4}
+                />
+
+                <rect
+                  x={centerX - barWidth - 2}
+                  y={createdHeight > 0 ? createdY : paddingTop + plotHeight - 2}
+                  width={barWidth}
+                  height={createdHeight > 0 ? createdHeight : 2}
+                  fill="#3b82f6"
+                  rx={createdHeight > 3 ? 3 : 0}
+                  className="transition-all duration-300 hover:brightness-110"
+                />
+
+                <rect
+                  x={centerX + 2}
+                  y={activatedHeight > 0 ? activatedY : paddingTop + plotHeight - 2}
+                  width={barWidth}
+                  height={activatedHeight > 0 ? activatedHeight : 2}
+                  fill="#10b981"
+                  rx={activatedHeight > 3 ? 3 : 0}
+                  className="transition-all duration-300 hover:brightness-110"
+                />
+
+                {item.created > 0 && (
+                  <text
+                    x={centerX - barWidth / 2 - 2}
+                    y={createdY - 4}
+                    textAnchor="middle"
+                    fill="#3b82f6"
+                    className="text-[10px] font-bold"
+                  >
+                    {item.created}
+                  </text>
+                )}
+                {item.activated > 0 && (
+                  <text
+                    x={centerX + barWidth / 2 + 2}
+                    y={activatedY - 4}
+                    textAnchor="middle"
+                    fill="#10b981"
+                    className="text-[10px] font-bold"
+                  >
+                    {item.activated}
+                  </text>
+                )}
+
+                <text
+                  x={centerX}
+                  y={paddingTop + plotHeight + 20}
+                  textAnchor="middle"
+                  fill="currentColor"
+                  className={cn(
+                    "text-[11px] font-mono transition-colors",
+                    isHovered ? "font-semibold fill-primary" : "fill-muted-foreground"
+                  )}
+                >
+                  {item.date.length > 5 ? item.date.slice(5) : item.date}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {hoveredIndex !== null && data[hoveredIndex] && (
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-popover/95 backdrop-blur border shadow-md rounded-md px-3 py-1 text-xs pointer-events-none z-10 flex items-center gap-3">
+            <span className="font-semibold">{data[hoveredIndex].date}</span>
+            <span className="text-blue-600 dark:text-blue-400">
+              新生成: {data[hoveredIndex].created} 个
+            </span>
+            <span className="text-emerald-600 dark:text-emerald-400">
+              新激活: {data[hoveredIndex].activated} 个
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardStats() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
+  const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
 
   useEffect(() => {
-    const fetchStats = async () => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const fetchStats = async (showLoading = false) => {
+      if (showLoading) setIsLoading(true);
       try {
         const response = await fetch('/api/admin/dashboard/stats');
         const data = await response.json();
 
         if (response.ok) {
-          setStats(data);
+          setStats(prev => {
+            if (!prev) return data;
+            if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+            return data;
+          });
         }
       } catch (error) {
-        console.error('Failed to fetch stats:', error);
+        if (showLoading) {
+          console.error('Failed to fetch stats:', error);
+        } else {
+          console.warn('Silent refresh stats failed:', error);
+        }
       } finally {
-        setIsLoading(false);
+        if (showLoading) setIsLoading(false);
       }
     };
 
-    fetchStats();
+    fetchStats(true);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchStats(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const timer = setInterval(() => {
-      fetchStats();
+      if (document.visibilityState === 'visible') {
+        fetchStats(false);
+      }
     }, 10000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   if (isLoading) {
@@ -194,56 +384,74 @@ export default function DashboardStats() {
       </div>
 
       <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center">
-            <Clock className="h-5 w-5 mr-2 text-muted-foreground" />
-            近期授权动态
-          </CardTitle>
-          <CardDescription>
-            过去 7 天内新生成和新激活的授权趋势
-          </CardDescription>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-lg flex items-center">
+              <Clock className="h-5 w-5 mr-2 text-muted-foreground" />
+              近期授权动态
+            </CardTitle>
+            <CardDescription>
+              过去 7 天内新生成和新激活的授权趋势
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-1 border rounded-lg p-0.5 bg-muted/40">
+            <Button
+              type="button"
+              variant={viewMode === 'chart' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs px-2.5"
+              onClick={() => setViewMode('chart')}
+            >
+              <BarChart3 className="h-3.5 w-3.5 mr-1" />
+              柱状图
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs px-2.5"
+              onClick={() => setViewMode('table')}
+            >
+              <TableIcon className="h-3.5 w-3.5 mr-1" />
+              数据表
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={placeholderStats.recentActivity}
-                margin={{
-                  top: 5,
-                  right: 30,
-                  left: 20,
-                  bottom: 60,
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="date"
-                  angle={-45}
-                  textAnchor="end"
-                  height={60}
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis allowDecimals={false} />
-                <Tooltip
-                  formatter={(value, name) => [`${value} 个`, name]}
-                  labelFormatter={(label) => `日期: ${label}`}
-                />
-                <Legend verticalAlign="top" height={36} />
-                <Bar
-                  dataKey="created"
-                  name="新生成授权"
-                  fill="hsl(var(--chart-1))"
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="activated"
-                  name="新激活授权"
-                  fill="hsl(var(--chart-2))"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {viewMode === 'chart' ? (
+            <div className="w-full py-2">
+              <ActivityBarChart data={placeholderStats.recentActivity} />
+            </div>
+          ) : (
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>日期</TableHead>
+                    <TableHead className="text-center">新生成授权数</TableHead>
+                    <TableHead className="text-center">新激活授权数</TableHead>
+                    <TableHead className="text-right">当日合计</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {placeholderStats.recentActivity.map((item) => (
+                    <TableRow key={item.date}>
+                      <TableCell className="font-mono text-xs">{item.date}</TableCell>
+                      <TableCell className="text-center font-medium text-blue-600 dark:text-blue-400">
+                        {item.created} 个
+                      </TableCell>
+                      <TableCell className="text-center font-medium text-emerald-600 dark:text-emerald-400">
+                        {item.activated} 个
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {item.created + item.activated} 个
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

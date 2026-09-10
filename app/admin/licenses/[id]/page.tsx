@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AdminLayout from '@/components/admin/admin-layout';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -99,14 +99,31 @@ export default function LicenseDetailsPage() {
   const [countToAdd, setCountToAdd] = useState('1');
   const [isUpdatingCount, setIsUpdatingCount] = useState(false);
 
+  const isEditingRef = useRef(false);
+  isEditingRef.current = isEditDialogOpen || isAddCountDialogOpen;
+
   useEffect(() => {
     fetchLicenseDetails(true);
     fetchGlobalSettings();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isEditingRef.current) {
+        fetchLicenseDetails(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     const timer = setInterval(() => {
-      fetchLicenseDetails(false);
+      if (document.visibilityState === 'visible' && !isEditingRef.current) {
+        fetchLicenseDetails(false);
+      }
     }, 5000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [params.id]);
 
   const fetchGlobalSettings = async () => {
@@ -134,10 +151,18 @@ export default function LicenseDetailsPage() {
       }
 
       const data = await response.json();
-      setLicense(data);
+      setLicense(prev => {
+        if (!prev) return data;
+        if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+        return data;
+      });
     } catch (err) {
-      console.error('Error fetching license details:', err);
-      setError('加载授权详情失败。请稍后再试。');
+      if (showLoading) {
+        console.error('Error fetching license details:', err);
+        setError('加载授权详情失败。请稍后再试。');
+      } else {
+        console.warn('Silent refresh failed:', err);
+      }
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -250,11 +275,11 @@ export default function LicenseDetailsPage() {
     const now = new Date();
     const created = new Date(license.createdAt);
     const expiry = new Date(license.expirationDate);
+    const isPermanent = expiry.getFullYear() >= 2099;
 
     let totalMins = 0;
     let usedMins = 0;
 
-    // 计算总时长
     if (license.licenseType === 'duration') {
       if (license.activatedAt) {
         const actualMs = expiry.getTime() - new Date(license.activatedAt).getTime();
@@ -267,13 +292,11 @@ export default function LicenseDetailsPage() {
       totalMins = Math.max(0, Math.round(totalMs / (1000 * 60)));
     }
 
-    // 通过累加所有在线会话的历史时长来计算真实的已使用时长
     if (license.sessions && license.sessions.length > 0) {
       let totalUsedMs = 0;
       license.sessions.forEach(session => {
         const sessionStart = new Date(session.createdAt).getTime();
 
-        // 判定会话是否活跃（和列表中一致的动态判断）
         const lastHb = new Date(session.lastHeartbeat).getTime();
         const diffSeconds = Math.max(0, Math.floor((now.getTime() - lastHb) / 1000));
         const isSessionActive = session.status === 'active' && diffSeconds <= 300;
@@ -287,15 +310,14 @@ export default function LicenseDetailsPage() {
       usedMins = Math.round(totalUsedMs / (1000 * 60));
     }
 
-    // 若计算出的已用时间超出总时间（由于取整误差），进行约束
-    if (license.licenseType === 'duration') {
+    if (license.licenseType === 'duration' && !isPermanent) {
       usedMins = Math.min(totalMins, usedMins);
     }
 
     return {
       usedStr: formatDuration(usedMins),
-      totalStr: formatDuration(totalMins),
-      percent: totalMins > 0 ? Math.min(100, Math.round((usedMins / totalMins) * 100)) : 0
+      totalStr: isPermanent ? '永久' : formatDuration(totalMins),
+      percent: isPermanent ? 100 : (totalMins > 0 ? Math.min(100, Math.round((usedMins / totalMins) * 100)) : 0)
     };
   };
 
@@ -604,6 +626,8 @@ export default function LicenseDetailsPage() {
                     <Badge variant="outline" className="text-yellow-600 border-yellow-600">待激活</Badge>
                   ) : license?.expirationDate && isExpired(license.expirationDate) ? (
                     <Badge variant="destructive">到期</Badge>
+                  ) : license?.expirationDate && new Date(license.expirationDate).getFullYear() >= 2099 ? (
+                    <Badge className="bg-purple-600 hover:bg-purple-700 text-white">永久</Badge>
                   ) : (
                     <Badge variant="default">有效</Badge>
                   )}
@@ -735,6 +759,10 @@ export default function LicenseDetailsPage() {
                       ) : license?.expirationDate && isExpired(license.expirationDate) ? (
                         <span className="text-destructive font-medium">
                           {formatDate(license.expirationDate)} (到期)
+                        </span>
+                      ) : license?.expirationDate && new Date(license.expirationDate).getFullYear() >= 2099 ? (
+                        <span className="text-purple-600 dark:text-purple-400 font-medium">
+                          永久有效 (2099-12-31 23:59)
                         </span>
                       ) : license?.expirationDate ? (
                         <span className="text-green-600 font-medium">

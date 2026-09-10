@@ -2,15 +2,15 @@ import { z } from 'zod';
 
 // Admin login
 export const adminLoginSchema = z.object({
-  username: z.string().min(1, 'Username is required').max(100),
-  password: z.string().min(1, 'Password is required').max(200),
+  username: z.string().min(1, '请输入用户名').max(100),
+  password: z.string().min(1, '请输入密码').max(200),
   turnstileToken: z.string().nullish(),
   setupToken: z.string().nullish(),
 });
 
 // User login
 export const userLoginSchema = z.object({
-  userHash: z.string().min(1, 'User hash is required').max(100),
+  userHash: z.string().min(1, '请输入用户特征码').max(100),
   turnstileToken: z.string().nullish(),
 });
 
@@ -30,6 +30,26 @@ export const createLicenseSchema = z.object({
     return false;
   },
   { message: 'Invalid license parameters' }
+);
+
+// Batch license generation
+export const batchGenerateLicenseSchema = z.object({
+  softwareName: z.string().min(1, '请选择或填写所属软件').max(200),
+  count: z.number().int().min(1, '制卡数量最少为1张').max(500, '单次批量制卡最多500张'),
+  licenseType: z.enum(['fixed', 'duration']).default('fixed'),
+  expirationDate: z.string().optional(),
+  duration: z.number().int().positive('时长需为正整数').optional(),
+  hardwareBindingEnabled: z.boolean().default(false),
+  allowSelfUnbind: z.boolean().default(true),
+  prefix: z.string().max(20, '前缀不能超过20个字符').optional(),
+  userId: z.string().optional(),
+}).refine(
+  (data) => {
+    if (data.licenseType === 'fixed') return !!data.expirationDate;
+    if (data.licenseType === 'duration') return !!data.duration && data.duration > 0;
+    return false;
+  },
+  { message: '请完善授权时间或时长参数' }
 );
 
 // License update
@@ -76,14 +96,14 @@ export const updateSoftwareSchema = z.object({
 
 // Manager creation
 export const createManagerSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters').max(100),
-  password: z.string().min(6, 'Password must be at least 6 characters').max(200),
+  username: z.string().min(3, '管理员用户名至少3个字符').max(100),
+  password: z.string().min(6, '管理员密码长度至少为6位').max(200),
   role: z.enum(['admin', 'owner']),
 });
 
 // Manager update
 export const updateManagerSchema = z.object({
-  password: z.string().min(6, 'Password must be at least 6 characters').max(200).optional(),
+  password: z.string().min(6, '管理员密码长度至少为6位').max(200).optional(),
   role: z.enum(['admin', 'owner']).optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
@@ -93,6 +113,7 @@ export const updateManagerSchema = z.object({
 // Settings update - whitelist of allowed keys
 export const ALLOWED_SETTING_KEYS = [
   'enable_recaptcha',
+  'enforce_strong_password',
   'session_timeout',
   'heartbeat_interval',
   'unbind_enabled',

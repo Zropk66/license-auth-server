@@ -6,13 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Plus, Search, RefreshCcw, Copy, Key, Download } from 'lucide-react';
+import { Loader2, Plus, Search, RefreshCcw, Copy, Key, Download, Layers } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import CreateLicenseDialog from './create-license-dialog';
 import BatchChangeSoftwareDialog from './batch-change-software-dialog';
 import BatchExtendDialog from './batch-extend-dialog';
+import BatchGenerateDialog from './batch-generate-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,6 +48,7 @@ export default function LicensesTable() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isBatchGenerateOpen, setIsBatchGenerateOpen] = useState(false);
   const [isChangeSoftwareOpen, setIsChangeSoftwareOpen] = useState(false);
   const [isResetHwidAlertOpen, setIsResetHwidAlertOpen] = useState(false);
   const [isExtendDialogOpen, setIsExtendDialogOpen] = useState(false);
@@ -160,49 +162,12 @@ export default function LicensesTable() {
   };
 
   const exportToCSV = () => {
-    if (filteredLicenses.length === 0) {
-      toast({
-        title: '提示',
-        description: '当前无可导出的授权数据',
-      });
-      return;
+    const params = new URLSearchParams();
+    if (search.trim()) {
+      params.set('search', search.trim());
     }
-
-    const headers = ['授权密钥', '所属软件', '用户名', '创建者', '卡密类型', '状态', 'HWID 绑定启用', '绑定HWID', '创建时间', '到期时间'];
-    const rows = filteredLicenses.map(license => {
-      const statusInfo = getLicenseStatus(license);
-      const isDuration = license.licenseType === 'duration';
-      const durationStr = isDuration ? `激活卡 (${formatDuration(license.duration)})` : '即时卡';
-      const expirationStr = (license.status === 'unactivated' && isDuration) ? '-' : formatDate(license.expirationDate);
-
-      return [
-        license.licenseKey,
-        license.softwareName,
-        license.username,
-        license.createdBy || '-',
-        durationStr,
-        statusInfo.label,
-        license.hardwareBindingEnabled ? '是' : '否',
-        license.hwid || '-',
-        formatDate(license.createdAt),
-        expirationStr
-      ];
-    });
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-
-    // Use UTF-8 BOM to prevent Chinese character corruption in Excel
-    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `licenses_export_${new Date().toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }).replace(/\//g, '')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+    window.open(`/api/admin/licenses/export${queryStr}`, '_blank');
   };
 
   useEffect(() => {
@@ -229,15 +194,17 @@ export default function LicensesTable() {
 
   const getLicenseStatus = (license: License) => {
     if (license.status === "revoked") {
-      return { label: "撤销", variant: "destructive" as const };
+      return { label: "撤销", variant: "destructive" as const, className: "" };
     } else if (license.status === "suspended") {
-      return { label: "冻结", variant: "secondary" as const };
+      return { label: "冻结", variant: "secondary" as const, className: "" };
     } else if (license.status === "unactivated") {
-      return { label: "待激活", variant: "outline" as const };
+      return { label: "待激活", variant: "outline" as const, className: "" };
     } else if (isExpired(license.expirationDate)) {
-      return { label: "到期", variant: "destructive" as const };
+      return { label: "到期", variant: "destructive" as const, className: "" };
+    } else if (new Date(license.expirationDate).getFullYear() >= 2099) {
+      return { label: "永久", variant: "default" as const, className: "bg-purple-600 hover:bg-purple-700 text-white" };
     } else {
-      return { label: "有效", variant: "default" as const };
+      return { label: "有效", variant: "default" as const, className: "" };
     }
   };
 
@@ -282,6 +249,15 @@ export default function LicensesTable() {
             >
               <Download className="h-4 w-4 mr-2" />
               导出 CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsBatchGenerateOpen(true)}
+              className="gap-1.5"
+            >
+              <Layers className="h-4 w-4" />
+              批量制卡
             </Button>
             <Button
               size="sm"
@@ -448,7 +424,7 @@ export default function LicensesTable() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={status.variant}>
+                          <Badge variant={status.variant} className={status.className}>
                             {status.label}
                           </Badge>
                         </TableCell>
@@ -482,6 +458,12 @@ export default function LicensesTable() {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onLicenseCreated={handleLicenseCreated}
+      />
+
+      <BatchGenerateDialog
+        open={isBatchGenerateOpen}
+        onOpenChange={setIsBatchGenerateOpen}
+        onSuccess={fetchLicenses}
       />
 
       <BatchChangeSoftwareDialog

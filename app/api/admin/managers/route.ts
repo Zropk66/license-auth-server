@@ -3,6 +3,7 @@ import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { createManagerSchema } from '@/lib/validations';
+import { checkPasswordPolicy } from '@/lib/password-policy';
 
 export async function GET(req: NextRequest) {
   const authResult = await validateAdminAuth(req);
@@ -67,6 +68,14 @@ export async function POST(req: NextRequest) {
       );
     }
     const { username, password, role } = parseResult.data;
+
+    const policyCheck = await checkPasswordPolicy(password);
+    if (!policyCheck.valid) {
+      return NextResponse.json(
+        { error: policyCheck.message || '密码不符合当前安全策略要求' },
+        { status: 400 }
+      );
+    }
 
     // 检查是否已存在相同用户名的管理员
     const existingManager = await prisma.admin.findUnique({

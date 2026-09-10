@@ -29,14 +29,6 @@ export async function PUT(req: NextRequest) {
     return authResult;
   }
 
-  // 仅允许 owner 角色修改系统设置
-  if (authResult.payload.role !== 'owner') {
-    return NextResponse.json(
-      { error: 'Only the owner can modify system settings' },
-      { status: 403 }
-    );
-  }
-
   try {
     const body = await req.json();
 

@@ -85,52 +85,57 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    // Get licenses created in the last 7 days grouped by date
+    // 获取最近 7 天的生成与激活数据
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
-    // Get licenses activated in the last 7 days grouped by date
-    const activationsByDay = await prisma.$queryRaw<{ date: Date; count: bigint }[]>`
-      SELECT DATE("activatedAt") as date, COUNT(*) as count
-      FROM "License"
-      WHERE "activatedAt" >= ${sevenDaysAgo}
-      GROUP BY DATE("activatedAt")
-      ORDER BY date
-    `;
+    const recentLicenses = await prisma.license.findMany({
+      where: {
+        OR: [
+          { createdAt: { gte: sevenDaysAgo } },
+          { activatedAt: { gte: sevenDaysAgo } },
+        ],
+      },
+      select: {
+        createdAt: true,
+        activatedAt: true,
+      },
+    });
 
-    // Generate an array of the last 7 days
     const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (6 - i));
-      date.setHours(0, 0, 0, 0);
-      return date;
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return formatOnlyDate(d);
     });
 
-    // Get count of licenses created for each day
-    const licensesByDay = await prisma.$queryRaw<{ date: Date; count: bigint }[]>`
-      SELECT DATE("createdAt") as date, COUNT(*) as count
-      FROM "License"
-      WHERE "createdAt" >= ${sevenDaysAgo}
-      GROUP BY DATE("createdAt")
-      ORDER BY date
-    `;
-
-    // Map the results to the format needed for the chart
-    const recentActivity = last7Days.map(day => {
-      const dateStr = formatOnlyDate(day);
-      const foundCreated = licensesByDay.find(
-        item => formatOnlyDate(item.date) === dateStr
-      );
-      const foundActivated = activationsByDay.find(
-        item => formatOnlyDate(item.date) === dateStr
-      );
-      return {
-        date: dateStr,
-        created: foundCreated ? Number(foundCreated.count) : 0,
-        activated: foundActivated ? Number(foundActivated.count) : 0,
-      };
+    const createdCounts: Record<string, number> = {};
+    const activatedCounts: Record<string, number> = {};
+    last7Days.forEach((day) => {
+      createdCounts[day] = 0;
+      activatedCounts[day] = 0;
     });
+
+    recentLicenses.forEach((l) => {
+      if (l.createdAt) {
+        const cDay = formatOnlyDate(l.createdAt);
+        if (createdCounts[cDay] !== undefined) {
+          createdCounts[cDay]++;
+        }
+      }
+      if (l.activatedAt) {
+        const aDay = formatOnlyDate(l.activatedAt);
+        if (activatedCounts[aDay] !== undefined) {
+          activatedCounts[aDay]++;
+        }
+      }
+    });
+
+    const recentActivity = last7Days.map((date) => ({
+      date,
+      created: createdCounts[date] || 0,
+      activated: activatedCounts[date] || 0,
+    }));
 
     return NextResponse.json({
       totalUsers,

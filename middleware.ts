@@ -83,7 +83,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith('/admin') && pathname !== '/admin/login') {
-    const token = request.cookies.get('auth_token')?.value;
+    const token =
+      request.cookies.get('admin_auth_token')?.value ||
+      request.cookies.get('auth_token')?.value;
 
     if (!token) {
       return NextResponse.redirect(redirectUrl(request, '/admin/login'));
@@ -97,7 +99,9 @@ export async function middleware(request: NextRequest) {
 
   // User page routes protection
   if (pathname.startsWith('/user') && pathname !== '/user/login') {
-    const token = request.cookies.get('auth_token')?.value;
+    const token =
+      request.cookies.get('user_auth_token')?.value ||
+      request.cookies.get('auth_token')?.value;
 
     if (!token) {
       return NextResponse.redirect(redirectUrl(request, '/user/login'));
@@ -112,7 +116,9 @@ export async function middleware(request: NextRequest) {
   // API routes protection (defense in depth)
   // Admin API routes (except auth endpoints)
   if (pathname.startsWith('/api/admin/') && !pathname.startsWith('/api/admin/auth/')) {
-    const token = request.cookies.get('auth_token')?.value;
+    const token =
+      request.cookies.get('admin_auth_token')?.value ||
+      request.cookies.get('auth_token')?.value;
 
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -126,7 +132,9 @@ export async function middleware(request: NextRequest) {
 
   // User API routes (except auth endpoints)
   if (pathname.startsWith('/api/user/') && !pathname.startsWith('/api/user/auth/')) {
-    const token = request.cookies.get('auth_token')?.value;
+    const token =
+      request.cookies.get('user_auth_token')?.value ||
+      request.cookies.get('auth_token')?.value;
 
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

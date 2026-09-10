@@ -58,3 +58,6 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+
+# superpowers docs
+docs/superpowers/

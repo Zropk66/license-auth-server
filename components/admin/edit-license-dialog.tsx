@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -74,6 +74,32 @@ interface EditLicenseDialogProps {
   onLicenseUpdated: (license: License) => void;
 }
 
+const formatDateForInput = (d?: Date | null) => {
+  if (!d || isNaN(d.getTime())) return '';
+  return format(d, 'yyyy-MM-dd HH:mm');
+};
+
+const parseDateFromInput = (str: string): Date | null => {
+  if (!str.trim()) return null;
+  const cleanStr = str.trim().replace(/\//g, '-');
+  const d = new Date(cleanStr);
+  if (!isNaN(d.getTime())) return d;
+  const match = cleanStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+  if (match) {
+    const [_, y, m, day, h, min, s] = match;
+    const parsed = new Date(
+      parseInt(y, 10),
+      parseInt(m, 10) - 1,
+      parseInt(day, 10),
+      h ? parseInt(h, 10) : 0,
+      min ? parseInt(min, 10) : 0,
+      s ? parseInt(s, 10) : 0
+    );
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+};
+
 const getInitialDuration = (minutes?: number | null) => {
   if (!minutes) return { value: 30, unit: 'days' as const };
   if (minutes % (7 * 24 * 60) === 0) return { value: minutes / (7 * 24 * 60), unit: 'weeks' as const };
@@ -94,6 +120,8 @@ export default function EditLicenseDialog({
   const [globalUnbindEnabled, setGlobalUnbindEnabled] = useState(false);
   const [softwares, setSoftwares] = useState<SoftwareOption[]>([]);
   const [loadingSoftwares, setLoadingSoftwares] = useState(false);
+  const [dateInputText, setDateInputText] = useState('');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   const initialDuration = getInitialDuration(license.duration);
 
@@ -110,16 +138,22 @@ export default function EditLicenseDialog({
   });
 
   const watchHardwareBindingEnabled = form.watch('hardwareBindingEnabled');
+  const prevOpenRef = useRef(false);
 
   useEffect(() => {
-    if (open) {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
+
+    if (open && !wasOpen) {
       setResetHardwareRequested(false);
       fetchGlobalSettings();
       fetchSoftwares();
       const dur = getInitialDuration(license.duration);
+      const expDate = new Date(license.expirationDate);
+      setDateInputText(formatDateForInput(expDate));
       form.reset({
         softwareName: license.softwareName,
-        expirationDate: new Date(license.expirationDate),
+        expirationDate: expDate,
         durationValue: dur.value,
         durationUnit: dur.unit,
         hardwareBindingEnabled: license.hardwareBindingEnabled,
@@ -334,6 +368,7 @@ export default function EditLicenseDialog({
                     newDate.setSeconds(0);
                     newDate.setMilliseconds(0);
                     field.onChange(newDate);
+                    setDateInputText(formatDateForInput(newDate));
                   };
 
                   const handleHoursChange = (hStr: string) => {
@@ -341,6 +376,7 @@ export default function EditLicenseDialog({
                     const newDate = new Date(currentDate);
                     newDate.setHours(h);
                     field.onChange(newDate);
+                    setDateInputText(formatDateForInput(newDate));
                   };
 
                   const handleMinutesChange = (mStr: string) => {
@@ -348,83 +384,120 @@ export default function EditLicenseDialog({
                     const newDate = new Date(currentDate);
                     newDate.setMinutes(m);
                     field.onChange(newDate);
+                    setDateInputText(formatDateForInput(newDate));
+                  };
+
+                  const handleSetPermanent = () => {
+                    const permDate = new Date(2099, 11, 31, 23, 59, 59, 0);
+                    field.onChange(permDate);
+                    setDateInputText(formatDateForInput(permDate));
                   };
 
                   return (
                     <FormItem className="flex flex-col">
                       <FormLabel>到期时间</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                              disabled={isSubmitting}
-                            >
-                              {field.value ? (
-                                format(field.value, "yyyy年MM月dd日 HH:mm")
-                              ) : (
-                                <span>选择日期</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0 flex flex-row" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={handleDateChange}
-                            initialFocus
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            value={dateInputText}
+                            onChange={(e) => {
+                              setDateInputText(e.target.value);
+                              const parsed = parseDateFromInput(e.target.value);
+                              if (parsed) {
+                                field.onChange(parsed);
+                              }
+                            }}
+                            onBlur={() => {
+                              const parsed = parseDateFromInput(dateInputText);
+                              if (parsed) {
+                                field.onChange(parsed);
+                                setDateInputText(formatDateForInput(parsed));
+                              } else if (field.value) {
+                                setDateInputText(formatDateForInput(field.value));
+                              }
+                            }}
+                            placeholder="YYYY-MM-DD HH:mm"
+                            disabled={isSubmitting}
+                            className="font-mono text-sm"
                           />
-                          <div className="flex flex-col justify-center border-l border-border px-4 py-2 gap-3 bg-muted/10 w-32">
-                            <div className="text-xs font-semibold text-muted-foreground text-center">具体时间</div>
-                            <div className="flex flex-col gap-2 items-center">
-                              <div className="flex items-center gap-1">
-                                <select
-                                  value={String(hours).padStart(2, '0')}
-                                  onChange={(e) => handleHoursChange(e.target.value)}
-                                  disabled={isSubmitting}
-                                  className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
-                                >
-                                  {Array.from({ length: 24 }, (_, i) => {
-                                    const val = String(i).padStart(2, '0');
-                                    return (
-                                      <option key={val} value={val}>
-                                        {val}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                                <span className="text-xs font-medium text-muted-foreground">时</span>
+                        </FormControl>
+                        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              disabled={isSubmitting}
+                              title="打开时间选择器"
+                              className="shrink-0"
+                            >
+                              <CalendarIcon className="h-4 w-4 opacity-70" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 flex flex-row" align="end">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={handleDateChange}
+                              initialFocus
+                            />
+                            <div className="flex flex-col justify-between border-l border-border p-3 bg-muted/10 w-36">
+                              <div className="space-y-3">
+                                <div className="text-xs font-semibold text-muted-foreground text-center">具体时间</div>
+                                <div className="flex flex-col gap-2 items-center">
+                                  <div className="flex items-center gap-1">
+                                    <select
+                                      value={String(hours).padStart(2, '0')}
+                                      onChange={(e) => handleHoursChange(e.target.value)}
+                                      disabled={isSubmitting}
+                                      className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
+                                    >
+                                      {Array.from({ length: 24 }, (_, i) => {
+                                        const val = String(i).padStart(2, '0');
+                                        return (
+                                          <option key={val} value={val}>
+                                            {val}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    <span className="text-xs font-medium text-muted-foreground">时</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <select
+                                      value={String(minutes).padStart(2, '0')}
+                                      onChange={(e) => handleMinutesChange(e.target.value)}
+                                      disabled={isSubmitting}
+                                      className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
+                                    >
+                                      {Array.from({ length: 60 }, (_, i) => {
+                                        const val = String(i).padStart(2, '0');
+                                        return (
+                                          <option key={val} value={val}>
+                                            {val}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    <span className="text-xs font-medium text-muted-foreground">分</span>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <select
-                                  value={String(minutes).padStart(2, '0')}
-                                  onChange={(e) => handleMinutesChange(e.target.value)}
-                                  disabled={isSubmitting}
-                                  className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
-                                >
-                                  {Array.from({ length: 60 }, (_, i) => {
-                                    const val = String(i).padStart(2, '0');
-                                    return (
-                                      <option key={val} value={val}>
-                                        {val}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                                <span className="text-xs font-medium text-muted-foreground">分</span>
-                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="w-full text-xs h-7 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/60 hover:bg-purple-50 dark:hover:bg-purple-950/30 font-medium whitespace-nowrap"
+                                onClick={handleSetPermanent}
+                              >
+                                设为永久
+                              </Button>
                             </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                       <FormDescription>
-                        授权将在所选时间的具体分秒失效。
+                        支持直接手动输入或点击日历图标选择时间。
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -518,47 +591,6 @@ export default function EditLicenseDialog({
                   )}>
                     {license.hwid}
                   </code>
-                </div>
-              </div>
-            )}
-
-            {license.hardwareHistories && license.hardwareHistories.length > 0 && (
-              <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    HWID 绑定历史记录 ({license.hardwareHistories.length})
-                  </h4>
-                </div>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {license.hardwareHistories.map((hist) => {
-                    const isCurrent = !resetHardwareRequested && hist.hwid === license.hwid;
-                    return (
-                      <div
-                        key={hist.id}
-                        className="flex items-center justify-between text-xs p-2 rounded bg-background border"
-                      >
-                        <div className="flex flex-col gap-0.5 truncate mr-2">
-                          <code className="font-mono text-xs truncate max-w-[200px]" title={hist.hwid}>
-                            {hist.hwid}
-                          </code>
-                          <span className="text-[10px] text-muted-foreground">
-                            首次: {new Date(hist.firstBoundAt).toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[10px] text-muted-foreground">
-                            活跃: {new Date(hist.lastSeenAt).toLocaleDateString()}
-                          </span>
-                          <Badge
-                            variant={isCurrent ? "default" : "secondary"}
-                            className="text-[10px] px-1.5 py-0"
-                          >
-                            {isCurrent ? "当前绑定" : "历史设备"}
-                          </Badge>
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
             )}

@@ -14,6 +14,7 @@ export default function SecurityDefenseCard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [enforceNonce, setEnforceNonce] = useState(false);
+  const [enforceStrongPassword, setEnforceStrongPassword] = useState(false);
   const [toleranceSec, setToleranceSec] = useState('60');
   const [autoBlacklistThreshold, setAutoBlacklistThreshold] = useState('20');
 
@@ -25,10 +26,12 @@ export default function SecurityDefenseCard() {
       const data: Array<{ key: string; value: string }> = await res.json();
 
       const nonce = data.find((s) => s.key === 'security_enforce_nonce')?.value === 'true';
+      const strongPass = data.find((s) => s.key === 'enforce_strong_password')?.value === 'true';
       const tolerance = data.find((s) => s.key === 'security_nonce_tolerance_sec')?.value || '60';
       const threshold = data.find((s) => s.key === 'security_auto_blacklist_threshold')?.value || '20';
 
       setEnforceNonce(nonce);
+      setEnforceStrongPassword(strongPass);
       setToleranceSec(tolerance);
       setAutoBlacklistThreshold(threshold);
     } catch (err: any) {
@@ -56,6 +59,7 @@ export default function SecurityDefenseCard() {
         body: JSON.stringify({
           settings: [
             { key: 'security_enforce_nonce', value: String(enforceNonce) },
+            { key: 'enforce_strong_password', value: String(enforceStrongPassword) },
             { key: 'security_nonce_tolerance_sec', value: toleranceSec },
             { key: 'security_auto_blacklist_threshold', value: autoBlacklistThreshold },
           ],
@@ -67,7 +71,7 @@ export default function SecurityDefenseCard() {
 
       toast({
         title: '已保存',
-        description: '安全防护与防重放配置已更新',
+        description: '安全防护与密码策略配置已更新',
       });
     } catch (err: any) {
       toast({
@@ -101,6 +105,16 @@ export default function SecurityDefenseCard() {
           </div>
         ) : (
           <form onSubmit={handleSave} className="space-y-4">
+            <div className="flex items-center justify-between border rounded-lg p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">强制高强度复杂密码策略</Label>
+                <p className="text-xs text-muted-foreground">
+                  开启后管理员创建与改密必须满足长度至少 8 位且同时包含大写字母、小写字母、数字及特殊符号；关闭时仅要求长度至少 6 位。
+                </p>
+              </div>
+              <Switch checked={enforceStrongPassword} onCheckedChange={setEnforceStrongPassword} />
+            </div>
+
             <div className="flex items-center justify-between border rounded-lg p-3">
               <div className="space-y-0.5">
                 <Label className="text-sm font-medium">强制 Nonce 防重放校验</Label>

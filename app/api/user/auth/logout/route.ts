@@ -4,11 +4,14 @@ import { logAction } from '@/lib/audit';
 import { getClientIP } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
-  const isSecure = req.headers.get('x-forwarded-proto') === 'https';
+  const isHttps = req.nextUrl.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
+  const isSecure = process.env.NODE_ENV === 'production' && isHttps;
   const ip = getClientIP(req);
 
-  // 尝试从 cookie 中提取用户信息以记录审计日志
-  const token = req.cookies.get('auth_token')?.value;
+  const token =
+    req.cookies.get('user_auth_token')?.value ||
+    req.cookies.get('auth_token')?.value;
+
   if (token) {
     const payload = await verifyJWT(token);
     if (payload && payload.type === 'user') {
@@ -24,15 +27,18 @@ export async function POST(req: NextRequest) {
 
   const response = NextResponse.json({ success: true });
 
-  // Clear the auth cookie (attributes aligned with login)
-  response.cookies.set({
-    name: 'auth_token',
-    value: '',
+  const clearOptions = {
     httpOnly: true,
     secure: isSecure,
-    sameSite: 'lax',
+    sameSite: 'lax' as const,
     path: '/',
     maxAge: 0,
+  };
+
+  response.cookies.set({
+    name: 'user_auth_token',
+    value: '',
+    ...clearOptions,
   });
 
   return response;
