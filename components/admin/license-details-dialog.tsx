@@ -117,6 +117,7 @@ export default function LicenseDetailsDialog({
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [kickingSessionId, setKickingSessionId] = useState<string | null>(null);
   const [isAddCountDialogOpen, setIsAddCountDialogOpen] = useState(false);
+  const [isHardwareHistoryDialogOpen, setIsHardwareHistoryDialogOpen] = useState(false);
   const [countToAdd, setCountToAdd] = useState('1');
   const [isUpdatingCount, setIsUpdatingCount] = useState(false);
 
@@ -128,7 +129,7 @@ export default function LicenseDetailsDialog({
   }>({ enabled: false, maxPerMonth: 1, cooldownHours: 24, deductHours: 0 });
 
   const isEditingRef = useRef(false);
-  isEditingRef.current = isEditDialogOpen || isAddCountDialogOpen;
+  isEditingRef.current = isEditDialogOpen || isAddCountDialogOpen || isHardwareHistoryDialogOpen;
 
   const fetchLicenseDetails = async (showLoading = false) => {
     if (!licenseId) return;
@@ -551,7 +552,7 @@ export default function LicenseDetailsDialog({
                     </TabsTrigger>
                     <TabsTrigger value="sessions" className="gap-1.5 text-xs">
                       <Activity className="h-3.5 w-3.5" />
-                      会话与历史
+                      在线会话
                       {license.sessions && license.sessions.filter((s) => s.status === 'active').length > 0 && (
                         <span className="ml-1 inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-bold leading-none text-emerald-700 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 rounded-full">
                           {license.sessions.filter((s) => s.status === 'active').length}
@@ -636,14 +637,26 @@ export default function LicenseDetailsDialog({
                   {/* ── 标签 2：硬件与解绑 ── */}
                   <TabsContent value="hardware" className="space-y-4 pt-1">
                     <div className="p-3.5 rounded-lg border bg-muted/20 space-y-3">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs font-semibold flex items-center gap-1.5">
                           <Smartphone className="h-3.5 w-3.5 text-primary" />
                           当前绑定硬件设备
                         </span>
-                        <Badge variant={license.hardwareBindingEnabled ? 'default' : 'secondary'}>
-                          {license.hardwareBindingEnabled ? '设备绑定启用' : '未开启绑定'}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[11px] px-2 gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => setIsHardwareHistoryDialogOpen(true)}
+                          >
+                            <History className="h-3 w-3" />
+                            绑定历史 ({license.hardwareHistories?.length || 0})
+                          </Button>
+                          <Badge variant={license.hardwareBindingEnabled ? 'default' : 'secondary'}>
+                            {license.hardwareBindingEnabled ? '设备绑定启用' : '未开启绑定'}
+                          </Badge>
+                        </div>
                       </div>
 
                       <div className="space-y-2 text-xs">
@@ -798,33 +811,6 @@ export default function LicenseDetailsDialog({
                               </div>
                             );
                           })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 硬件绑定历史变更记录 */}
-                    <div className="space-y-2 pt-2 border-t">
-                      <div className="text-xs font-semibold flex items-center gap-1.5">
-                        <History className="h-3.5 w-3.5 text-primary" />
-                        硬件绑定记录 ({license.hardwareHistories?.length || 0})
-                      </div>
-
-                      {!license.hardwareHistories || license.hardwareHistories.length === 0 ? (
-                        <div className="p-4 text-center text-xs text-muted-foreground border rounded-lg bg-muted/10">
-                          暂无硬件变更记录
-                        </div>
-                      ) : (
-                        <div className="border rounded-lg overflow-hidden divide-y text-xs">
-                          {license.hardwareHistories.map((hist) => (
-                            <div key={hist.id} className="p-2.5 flex items-center justify-between gap-2 bg-card">
-                              <div className="font-mono text-xs text-foreground truncate max-w-[280px]">
-                                {hist.hwid}
-                              </div>
-                              <div className="text-[10px] text-muted-foreground font-mono shrink-0">
-                                首次: {formatDate(hist.firstBoundAt)}
-                              </div>
-                            </div>
-                          ))}
                         </div>
                       )}
                     </div>
@@ -1022,6 +1008,58 @@ export default function LicenseDetailsDialog({
               {isUpdatingCount && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
               确认增加
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 嵌套弹窗：硬件绑定历史记录 */}
+      <Dialog open={isHardwareHistoryDialogOpen} onOpenChange={setIsHardwareHistoryDialogOpen}>
+        <DialogContent className="sm:max-w-[560px] max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="p-4 border-b">
+            <DialogTitle className="text-base flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              硬件绑定历史记录
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              该授权历史绑定的硬件特征码记录（共 {license?.hardwareHistories?.length || 0} 条）
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {!license?.hardwareHistories || license.hardwareHistories.length === 0 ? (
+              <div className="p-8 text-center text-xs text-muted-foreground border rounded-lg bg-muted/10">
+                暂无硬件绑定历史变更记录
+              </div>
+            ) : (
+              <div className="border rounded-lg overflow-hidden divide-y text-xs">
+                {license.hardwareHistories.map((hist) => (
+                  <div
+                    key={hist.id}
+                    className="p-3 flex items-center justify-between gap-3 bg-card hover:bg-muted/20 transition-colors"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-1.5 font-mono text-xs text-foreground font-medium truncate">
+                        <MaskedText value={hist.hwid} head={8} tail={6} className="text-xs" />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 shrink-0"
+                          onClick={() => copyToClipboard(hist.hwid, '历史 HWID')}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground flex gap-3">
+                        <span>首次绑定: {formatDate(hist.firstBoundAt)}</span>
+                        {hist.lastSeenAt && (
+                          <span>最近活跃: {formatDate(hist.lastSeenAt)}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
