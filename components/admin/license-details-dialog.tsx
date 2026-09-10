@@ -173,12 +173,12 @@ export default function LicenseDetailsDialog({
 
   useEffect(() => {
     if (open && licenseId) {
+      if (license && license.id !== licenseId) {
+        setLicense(null);
+      }
       setActiveTab('info');
       fetchLicenseDetails(true);
       fetchGlobalSettings();
-    } else {
-      setLicense(null);
-      setError(null);
     }
   }, [open, licenseId]);
 
@@ -542,9 +542,9 @@ export default function LicenseDetailsDialog({
               </div>
 
               {/* 中间多标签内容区域 */}
-              <div className="flex-1 overflow-y-auto p-5">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                  <TabsList className="grid grid-cols-3 w-full">
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-5">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 space-y-4">
+                  <TabsList className="grid grid-cols-3 w-full shrink-0">
                     <TabsTrigger value="info" className="gap-1.5 text-xs">
                       <Info className="h-3.5 w-3.5" />
                       基本与时效
@@ -555,7 +555,7 @@ export default function LicenseDetailsDialog({
                     </TabsTrigger>
                     <TabsTrigger value="sessions" className="gap-1.5 text-xs">
                       <Activity className="h-3.5 w-3.5" />
-                      在线会话
+                      会话历史
                       {license.sessions && license.sessions.filter((s) => s.status === 'active').length > 0 && (
                         <span className="ml-1 inline-flex items-center justify-center px-1.5 py-0.2 text-[10px] font-bold leading-none text-emerald-700 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 rounded-full">
                           {license.sessions.filter((s) => s.status === 'active').length}
@@ -565,7 +565,7 @@ export default function LicenseDetailsDialog({
                   </TabsList>
 
                   {/* ── 标签 1：基本与时效 ── */}
-                  <TabsContent value="info" className="space-y-4 pt-1">
+                  <TabsContent value="info" className="flex-1 overflow-y-auto space-y-4 pt-1 pr-1">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       <div className="p-3.5 rounded-lg border bg-muted/20 space-y-2.5">
                         <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -759,64 +759,62 @@ export default function LicenseDetailsDialog({
                     </div>
                   </TabsContent>
 
-                  {/* ── 标签 3：会话与历史 ── */}
-                  <TabsContent value="sessions" className="space-y-4 pt-1">
+                  {/* ── 标签 3：会话历史 ── */}
+                  <TabsContent value="sessions" className="flex-1 flex flex-col min-h-0 space-y-2 pt-1 overflow-hidden">
                     {/* 在线会话列表 */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs font-semibold">
-                        <span className="flex items-center gap-1.5">
-                          <Activity className="h-3.5 w-3.5 text-primary" />
-                          客户端会话记录 ({license.sessions?.length || 0})
-                        </span>
-                      </div>
-
-                      {!license.sessions || license.sessions.length === 0 ? (
-                        <div className="p-6 text-center text-xs text-muted-foreground border rounded-lg bg-muted/10">
-                          暂无客户端在线会话记录
-                        </div>
-                      ) : (
-                        <div className="border rounded-lg overflow-hidden divide-y text-xs">
-                          {license.sessions.map((session) => {
-                            const statusObj = getSessionStatus(session.lastHeartbeat, session.status);
-                            const isKicking = kickingSessionId === session.id;
-
-                            return (
-                              <div
-                                key={session.id}
-                                className="p-2.5 flex items-center justify-between gap-2 bg-card hover:bg-muted/30 transition-colors"
-                              >
-                                <div className="space-y-0.5">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono font-medium text-foreground">
-                                      {session.ipAddress || '未知IP'}
-                                    </span>
-                                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusObj.badgeClass}`}>
-                                      {statusObj.label}
-                                    </Badge>
-                                  </div>
-                                  <div className="text-[10px] text-muted-foreground font-mono">
-                                    心跳: {formatDate(session.lastHeartbeat)}
-                                  </div>
-                                </div>
-
-                                {session.status === 'active' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs text-destructive border-destructive/20 hover:bg-destructive/10"
-                                    onClick={() => kickSession(session.id)}
-                                    disabled={isKicking}
-                                  >
-                                    {isKicking && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-                                    踢下线
-                                  </Button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                    <div className="flex items-center justify-between text-xs font-semibold shrink-0">
+                      <span className="flex items-center gap-1.5">
+                        <Activity className="h-3.5 w-3.5 text-primary" />
+                        客户端会话记录 ({license.sessions?.length || 0})
+                      </span>
                     </div>
+
+                    {!license.sessions || license.sessions.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-muted-foreground border rounded-lg bg-muted/10">
+                        暂无客户端在线会话记录
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-y-auto border rounded-lg divide-y text-xs">
+                        {license.sessions.map((session) => {
+                          const statusObj = getSessionStatus(session.lastHeartbeat, session.status);
+                          const isKicking = kickingSessionId === session.id;
+
+                          return (
+                            <div
+                              key={session.id}
+                              className="p-2.5 flex items-center justify-between gap-2 bg-card hover:bg-muted/30 transition-colors"
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-medium text-foreground">
+                                    {session.ipAddress || '未知IP'}
+                                  </span>
+                                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${statusObj.badgeClass}`}>
+                                    {statusObj.label}
+                                  </Badge>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground font-mono">
+                                  心跳: {formatDate(session.lastHeartbeat)}
+                                </div>
+                              </div>
+
+                              {session.status === 'active' && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs text-destructive border-destructive/20 hover:bg-destructive/10"
+                                  onClick={() => kickSession(session.id)}
+                                  disabled={isKicking}
+                                >
+                                  {isKicking && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                                  踢下线
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               </div>

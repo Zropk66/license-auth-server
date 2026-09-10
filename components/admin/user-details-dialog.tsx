@@ -108,10 +108,10 @@ export default function UserDetailsDialog({
 
   useEffect(() => {
     if (open && userId) {
+      if (user && user.id !== userId) {
+        setUser(null);
+      }
       fetchUserDetails(true);
-    } else {
-      setUser(null);
-      setError(null);
     }
   }, [open, userId]);
 
@@ -235,9 +235,9 @@ export default function UserDetailsDialog({
               </div>
 
               {/* 中间信息与关联授权 */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                {/* 用户凭据与信息卡 */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-5 gap-4">
+                {/* 用户凭据与信息卡 (固定置顶不随列表滚动) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 shrink-0">
                   <div className="p-3.5 rounded-lg border bg-muted/20 space-y-1.5">
                     <div className="text-xs text-muted-foreground">用户专属哈希 (UserHash)</div>
                     <div className="flex items-center gap-1.5 font-mono text-xs font-semibold text-foreground">
@@ -265,9 +265,9 @@ export default function UserDetailsDialog({
                   </div>
                 </div>
 
-                {/* 关联授权卡密列表 */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-semibold">
+                {/* 关联授权卡密列表 (仅此容器内部纵向滚动) */}
+                <div className="flex-1 flex flex-col min-h-0 space-y-2 overflow-hidden">
+                  <div className="flex items-center justify-between text-xs font-semibold shrink-0">
                     <span className="flex items-center gap-1.5">
                       <Layers className="h-3.5 w-3.5 text-primary" />
                       关联软件授权列表 ({user.licenses?.length || 0})
@@ -279,7 +279,7 @@ export default function UserDetailsDialog({
                       该用户目前名下暂无关联任何授权卡密
                     </div>
                   ) : (
-                    <div className="border rounded-lg overflow-hidden divide-y text-xs">
+                    <div className="flex-1 overflow-y-auto border rounded-lg divide-y text-xs">
                       {user.licenses.map((lic) => (
                         <div
                           key={lic.id}
