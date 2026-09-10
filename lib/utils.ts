@@ -48,6 +48,7 @@ export function isValidTurnstileToken(
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    signal: AbortSignal.timeout(5000),
   })
     .then((response) => response.json())
     .then((data) => {

@@ -85,14 +85,13 @@ export default function UserLogin() {
         description: '正在跳转至控制台...',
       });
 
-      router.push('/user/dashboard');
+      window.location.href = '/user/dashboard';
     } catch (error) {
       toast({
         title: '登录失败',
         description: error instanceof Error ? error.message : '发生未知错误',
         variant: 'destructive',
       });
-    } finally {
       setIsLoading(false);
     }
   };
