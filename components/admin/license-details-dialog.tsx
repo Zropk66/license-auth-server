@@ -481,7 +481,10 @@ export default function LicenseDetailsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[760px] max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogContent
+          className="sm:max-w-[760px] max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader className="sr-only">
             <DialogTitle>授权详情</DialogTitle>
             <DialogDescription>查看与管理软件授权密钥详情</DialogDescription>
@@ -1014,7 +1017,10 @@ export default function LicenseDetailsDialog({
 
       {/* 嵌套弹窗：硬件绑定历史记录 */}
       <Dialog open={isHardwareHistoryDialogOpen} onOpenChange={setIsHardwareHistoryDialogOpen}>
-        <DialogContent className="sm:max-w-[560px] max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogContent
+          className="sm:max-w-[560px] max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogHeader className="p-4 border-b">
             <DialogTitle className="text-base flex items-center gap-2">
               <History className="h-4 w-4 text-primary" />
@@ -1032,32 +1038,47 @@ export default function LicenseDetailsDialog({
               </div>
             ) : (
               <div className="border rounded-lg overflow-hidden divide-y text-xs">
-                {license.hardwareHistories.map((hist) => (
-                  <div
-                    key={hist.id}
-                    className="p-3 flex items-center justify-between gap-3 bg-card hover:bg-muted/20 transition-colors"
-                  >
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-1.5 font-mono text-xs text-foreground font-medium truncate">
-                        <MaskedText value={hist.hwid} head={8} tail={6} className="text-xs" />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 shrink-0"
-                          onClick={() => copyToClipboard(hist.hwid, '历史 HWID')}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <div className="text-[10px] text-muted-foreground flex gap-3">
-                        <span>首次绑定: {formatDate(hist.firstBoundAt)}</span>
-                        {hist.lastSeenAt && (
-                          <span>最近活跃: {formatDate(hist.lastSeenAt)}</span>
-                        )}
+                {license.hardwareHistories.map((hist) => {
+                  const isCurrent = license?.hwid && hist.hwid === license.hwid;
+                  return (
+                    <div
+                      key={hist.id}
+                      className={`p-3 flex items-center justify-between gap-3 transition-colors ${
+                        isCurrent ? 'bg-primary/5 dark:bg-primary/10' : 'bg-card hover:bg-muted/20'
+                      }`}
+                    >
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 font-mono text-xs text-foreground font-medium">
+                          <MaskedText value={hist.hwid} head={8} tail={6} className="text-xs" />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0"
+                            onClick={() => copyToClipboard(hist.hwid, '历史 HWID')}
+                          >
+                            <Copy className="h-3 w-3" />
+                            <span className="sr-only">复制 HWID</span>
+                          </Button>
+                          {isCurrent ? (
+                            <Badge className="text-[10px] px-1.5 py-0 bg-emerald-600 hover:bg-emerald-700 text-white font-normal">
+                              当前绑定
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 text-muted-foreground font-normal">
+                              历史设备
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground flex items-center gap-3">
+                          <span>首次绑定: {formatDate(hist.firstBoundAt)}</span>
+                          {hist.lastSeenAt && (
+                            <span>最后活跃: {formatDate(hist.lastSeenAt)}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

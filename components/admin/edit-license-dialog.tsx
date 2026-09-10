@@ -116,7 +116,6 @@ export default function EditLicenseDialog({
 }: EditLicenseDialogProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [resetHardwareRequested, setResetHardwareRequested] = useState(false);
   const [globalUnbindEnabled, setGlobalUnbindEnabled] = useState(false);
   const [softwares, setSoftwares] = useState<SoftwareOption[]>([]);
   const [loadingSoftwares, setLoadingSoftwares] = useState(false);
@@ -145,7 +144,6 @@ export default function EditLicenseDialog({
     prevOpenRef.current = open;
 
     if (open && !wasOpen) {
-      setResetHardwareRequested(false);
       fetchGlobalSettings();
       fetchSoftwares();
       const dur = getInitialDuration(license.duration);
@@ -197,10 +195,6 @@ export default function EditLicenseDialog({
         allowSelfUnbind: data.allowSelfUnbind,
       };
 
-      if (resetHardwareRequested) {
-        payload.resethwid = true;
-      }
-
       const isUnactivatedDuration = license.status === 'unactivated' && license.licenseType === 'duration';
 
       if (isUnactivatedDuration) {
@@ -229,9 +223,7 @@ export default function EditLicenseDialog({
 
       toast({
         title: '授权已更新',
-        description: resetHardwareRequested
-          ? '已成功更新授权并重置HWID（关联活跃会话已强制下线）'
-          : '已成功更新授权',
+        description: '已成功更新授权配置',
       });
 
       onOpenChange(false);
@@ -555,43 +547,6 @@ export default function EditLicenseDialog({
             {watchHardwareBindingEnabled && !globalUnbindEnabled && (
               <div className="p-2.5 border rounded-lg bg-muted/20 text-xs text-muted-foreground">
                 提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密为一机一卡不可换绑。
-              </div>
-            )}
-
-            {license.hardwareBindingEnabled && license.hwid && (
-              <div className={cn(
-                "p-3 border rounded-lg transition-colors",
-                resetHardwareRequested ? "border-destructive/40 bg-destructive/5" : ""
-              )}>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h4 className="text-sm font-medium">当前HWID</h4>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {resetHardwareRequested ? (
-                        <span className="text-destructive font-medium">已标记重置（点击“更新授权”后生效，当前活跃会话将被强制下线）</span>
-                      ) : (
-                        '此授权目前已与特定HWID 绑定。'
-                      )}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant={resetHardwareRequested ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => setResetHardwareRequested(!resetHardwareRequested)}
-                    disabled={isSubmitting}
-                  >
-                    {resetHardwareRequested ? '撤销重置' : '重置 ID'}
-                  </Button>
-                </div>
-                <div className="mt-2">
-                  <code className={cn(
-                    "text-xs p-1 rounded break-all block",
-                    resetHardwareRequested ? "bg-destructive/10 text-destructive line-through" : "bg-muted"
-                  )}>
-                    {license.hwid}
-                  </code>
-                </div>
               </div>
             )}
 
