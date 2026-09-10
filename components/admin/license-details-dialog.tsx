@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -505,173 +506,33 @@ export default function LicenseDetailsDialog({
           ) : (
             <>
               {/* 顶部 Header */}
-              <div className="p-5 border-b bg-card">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Key className="h-4 w-4 text-primary shrink-0" />
-                      <MaskedText
-                        value={license.licenseKey}
-                        className="text-base font-mono font-bold tracking-tight"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0"
-                        onClick={() => copyToClipboard(license.licenseKey, '卡密')}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                        <span className="sr-only">复制卡密</span>
-                      </Button>
-                      {getStatusBadge()}
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">{license.softwareName}</span>
-                      <span>•</span>
-                      <span>
-                        {license.licenseType === 'duration'
-                          ? `激活卡 (${formatLicenseDuration(license.duration)})`
-                          : '即时固定卡'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 快捷操作栏 */}
-                  <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+              <div className="p-5 border-b bg-card pr-12">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Key className="h-4 w-4 text-primary shrink-0" />
+                    <MaskedText
+                      value={license.licenseKey}
+                      className="text-base font-mono font-bold tracking-tight"
+                    />
                     <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 text-xs gap-1"
-                      onClick={() => setIsEditDialogOpen(true)}
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 shrink-0"
+                      onClick={() => copyToClipboard(license.licenseKey, '卡密')}
                     >
-                      <Pencil className="h-3.5 w-3.5" />
-                      编辑
+                      <Copy className="h-3.5 w-3.5" />
+                      <span className="sr-only">复制卡密</span>
                     </Button>
-
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-xs gap-1 text-orange-600 border-orange-200 hover:bg-orange-50 dark:border-orange-900/50 dark:hover:bg-orange-950/20"
-                          disabled={!license.hwid}
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          重置HWID
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>重置硬件特征码</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            确定要清空该授权当前绑定的硬件特征码吗？重置后，下一个使用此卡密登录的客户端设备将自动完成新绑定。
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>取消</AlertDialogCancel>
-                          <AlertDialogAction onClick={handleResetHwid}>确认重置</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-
-                    {license.status === 'unactivated' ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs gap-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900/50 dark:hover:bg-emerald-950/20"
-                        onClick={handleActivateLicense}
-                        disabled={isActivating}
-                      >
-                        {isActivating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                        立即激活
-                      </Button>
-                    ) : license.status !== 'revoked' ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs gap-1 text-yellow-600 border-yellow-200 hover:bg-yellow-50 dark:border-yellow-900/50 dark:hover:bg-yellow-950/20"
-                        onClick={toggleSuspend}
-                        disabled={isSuspending}
-                      >
-                        {isSuspending ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : license.status === 'suspended' ? (
-                          <>
-                            <Play className="h-3.5 w-3.5" />
-                            恢复
-                          </>
-                        ) : (
-                          <>
-                            <Pause className="h-3.5 w-3.5" />
-                            冻结
-                          </>
-                        )}
-                      </Button>
-                    ) : null}
-
-                    {license.status !== 'revoked' ? (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs gap-1 text-destructive border-destructive/20 hover:bg-destructive/10"
-                            disabled={isRevoking}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            撤销
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>撤销授权卡密</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              撤销后该卡密将立即作废并失效，所有在线客户端将立即被终止会话。确定撤销吗？
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              onClick={revokeLicense}
-                            >
-                              确认撤销
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    ) : (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-8 text-xs gap-1"
-                            disabled={isDeleting}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            永久删除
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>永久删除已撤销授权</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              此操作不可恢复，将同时删除关联的所有会话与绑定历史。确定永久删除吗？
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                              onClick={deleteLicense}
-                            >
-                              确认删除
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
+                    {getStatusBadge()}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{license.softwareName}</span>
+                    <span>•</span>
+                    <span>
+                      {license.licenseType === 'duration'
+                        ? `激活卡 (${formatLicenseDuration(license.duration)})`
+                        : '即时固定卡'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -970,6 +831,155 @@ export default function LicenseDetailsDialog({
                   </TabsContent>
                 </Tabs>
               </div>
+
+              {/* 底部操作栏 */}
+              <DialogFooter className="p-3 px-5 border-t bg-muted/20 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => onOpenChange(false)}
+                >
+                  关闭
+                </Button>
+
+                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs gap-1"
+                    onClick={() => setIsEditDialogOpen(true)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    编辑
+                  </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs gap-1 text-orange-600 border-orange-200 hover:bg-orange-50 dark:border-orange-900/50 dark:hover:bg-orange-950/20"
+                        disabled={!license.hwid}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        重置HWID
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>重置硬件特征码</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          确定要清空该授权当前绑定的硬件特征码吗？重置后，下一个使用此卡密登录的客户端设备将自动完成新绑定。
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>取消</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleResetHwid}>确认重置</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
+                  {license.status === 'unactivated' ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900/50 dark:hover:bg-emerald-950/20"
+                      onClick={handleActivateLicense}
+                      disabled={isActivating}
+                    >
+                      {isActivating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                      立即激活
+                    </Button>
+                  ) : license.status !== 'revoked' ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1 text-yellow-600 border-yellow-200 hover:bg-yellow-50 dark:border-yellow-900/50 dark:hover:bg-yellow-950/20"
+                      onClick={toggleSuspend}
+                      disabled={isSuspending}
+                    >
+                      {isSuspending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : license.status === 'suspended' ? (
+                        <>
+                          <Play className="h-3.5 w-3.5" />
+                          恢复
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="h-3.5 w-3.5" />
+                          冻结
+                        </>
+                      )}
+                    </Button>
+                  ) : null}
+
+                  {license.status !== 'revoked' ? (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs gap-1 text-destructive border-destructive/20 hover:bg-destructive/10"
+                          disabled={isRevoking}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          撤销
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>撤销授权卡密</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            撤销后该卡密将立即作废并失效，所有在线客户端将立即被终止会话。确定撤销吗？
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>取消</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={revokeLicense}
+                          >
+                            确认撤销
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  ) : (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="h-8 text-xs gap-1"
+                          disabled={isDeleting}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          永久删除
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>永久删除已撤销授权</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            此操作不可恢复，将同时删除关联的所有会话与绑定历史。确定永久删除吗？
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>取消</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={deleteLicense}
+                          >
+                            确认删除
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
+              </DialogFooter>
             </>
           )}
         </DialogContent>
