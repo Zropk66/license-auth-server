@@ -20,6 +20,7 @@ import { Loader2, Plus, Search, RefreshCcw, Copy, User, Trash2 } from 'lucide-re
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import CreateUserDialog from './create-user-dialog';
+import UserDetailsDialog from './user-details-dialog';
 
 type User = {
   id: string;
@@ -36,6 +37,8 @@ export default function UsersTable() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   
@@ -215,9 +218,12 @@ export default function UsersTable() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            asChild
+                            onClick={() => {
+                              setSelectedUserId(user.id);
+                              setIsDetailsDialogOpen(true);
+                            }}
                           >
-                            <a href={`/admin/users/${user.id}`}>查看</a>
+                            查看
                           </Button>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
@@ -269,10 +275,17 @@ export default function UsersTable() {
         </CardContent>
       </Card>
       
-      <CreateUserDialog 
-        open={isDialogOpen} 
+      <CreateUserDialog
+        open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         onUserCreated={handleUserCreated}
+      />
+
+      <UserDetailsDialog
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        userId={selectedUserId}
+        onUpdated={fetchUsers}
       />
     </>
   );
