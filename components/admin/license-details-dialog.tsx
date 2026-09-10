@@ -833,26 +833,16 @@ export default function LicenseDetailsDialog({
               </div>
 
               {/* 底部操作栏 */}
-              <DialogFooter className="p-3 px-5 border-t bg-muted/20 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2">
+              <DialogFooter className="p-3 px-5 border-t bg-muted/20 flex items-center justify-end gap-1.5 flex-wrap">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-xs"
-                  onClick={() => onOpenChange(false)}
+                  className="h-8 text-xs gap-1"
+                  onClick={() => setIsEditDialogOpen(true)}
                 >
-                  关闭
+                  <Pencil className="h-3.5 w-3.5" />
+                  编辑
                 </Button>
-
-                <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 text-xs gap-1"
-                    onClick={() => setIsEditDialogOpen(true)}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    编辑
-                  </Button>
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -978,7 +968,6 @@ export default function LicenseDetailsDialog({
                       </AlertDialogContent>
                     </AlertDialog>
                   )}
-                </div>
               </DialogFooter>
             </>
           )}
