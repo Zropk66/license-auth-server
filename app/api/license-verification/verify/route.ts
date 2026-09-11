@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
           licenseKey,
           softwareName,
           hwid,
+          deviceName,
           success: false,
           reason: 'hwid_blacklisted',
         });
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
         licenseKey,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'anti_replay_failed',
       });
@@ -118,6 +120,7 @@ export async function POST(req: NextRequest) {
         licenseKey: licenseKey || null,
         softwareName: null,
         hwid,
+        deviceName,
         success: false,
         reason: 'missing_software_name',
       });
@@ -133,6 +136,7 @@ export async function POST(req: NextRequest) {
         licenseKey: null,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'missing_license_key',
       });
@@ -156,6 +160,7 @@ export async function POST(req: NextRequest) {
         licenseKey,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'invalid_license_key',
       });
@@ -166,13 +171,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 检查软件标识是否匹配
-    if (license.softwareName !== softwareName) {
+    const isUniversalLicense = license.softwareName === 'ALL' || license.softwareName === '*';
+    if (!isUniversalLicense && license.softwareName !== softwareName) {
       await logVerificationAttempt({
         ipAddress,
         licenseKey,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'software_mismatch',
       });
@@ -182,9 +188,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 检查所属软件是否处于启用状态
     const boundSoftware = await prisma.software.findUnique({
-      where: { name: license.softwareName },
+      where: { name: softwareName },
     });
     if (boundSoftware && !boundSoftware.enabled) {
       await logVerificationAttempt({
@@ -192,12 +197,13 @@ export async function POST(req: NextRequest) {
         licenseKey,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'software_disabled',
       });
       return enc({
         error: 'Software is disabled',
-        message: `所属软件「${license.softwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
+        message: `所属软件「${softwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
       });
     }
 
@@ -208,6 +214,7 @@ export async function POST(req: NextRequest) {
         licenseKey,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'license_revoked',
       });
@@ -224,6 +231,7 @@ export async function POST(req: NextRequest) {
         licenseKey,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'license_suspended',
       });
@@ -283,6 +291,7 @@ export async function POST(req: NextRequest) {
         licenseKey,
         softwareName,
         hwid,
+        deviceName,
         success: false,
         reason: 'license_expired',
       });
@@ -300,6 +309,7 @@ export async function POST(req: NextRequest) {
           licenseKey,
           softwareName,
           hwid: null,
+          deviceName,
           success: false,
           reason: 'hwid_required',
         });
@@ -326,6 +336,7 @@ export async function POST(req: NextRequest) {
           licenseKey,
           softwareName,
           hwid,
+          deviceName,
           success: false,
           reason: 'hwid_mismatch',
         });
@@ -410,6 +421,7 @@ export async function POST(req: NextRequest) {
       licenseKey,
       softwareName: activeLicense.softwareName,
       hwid,
+      deviceName,
       success: true,
       reason: 'success',
     });
@@ -444,7 +456,7 @@ export async function POST(req: NextRequest) {
       valid: true,
       licenseKey: activeLicense.licenseKey,
       username: activeLicense.user.username,
-      softwareName: activeLicense.softwareName,
+      softwareName: isUniversalLicense ? softwareName : activeLicense.softwareName,
       expirationDate: activeLicense.expirationDate,
       hardwareBindingEnabled: activeLicense.hardwareBindingEnabled,
       status: activeLicense.status,

@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const pageSizeParam = url.searchParams.get('pageSize');
     const search = url.searchParams.get('search')?.trim();
     const status = url.searchParams.get('status')?.trim();
+    const software = url.searchParams.get('software')?.trim();
 
     const parseResult = paginationSchema.safeParse({
       page: pageParam || undefined,
@@ -39,10 +40,17 @@ export async function GET(req: NextRequest) {
       where.success = false;
     }
 
+    if (software && software !== 'all') {
+      where.softwareName = software;
+    }
+
     if (search) {
       where.OR = [
         { licenseKey: { contains: search, mode: 'insensitive' } },
         { ipAddress: { contains: search, mode: 'insensitive' } },
+        { hwid: { contains: search, mode: 'insensitive' } },
+        { softwareName: { contains: search, mode: 'insensitive' } },
+        { deviceName: { contains: search, mode: 'insensitive' } },
         { reason: { contains: search, mode: 'insensitive' } },
       ];
     }

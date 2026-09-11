@@ -14,11 +14,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Search, RefreshCcw, ClipboardList, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, ExternalLink, Download } from 'lucide-react';
+import {
+  Loader2,
+  Search,
+  RefreshCcw,
+  ClipboardList,
+  ShieldCheck,
+  ShieldAlert,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Download,
+  Copy,
+  Check,
+  Eye,
+  Ban,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { MaskedText } from '@/components/ui/masked-text';
+import VerificationDetailsDialog, { VerificationLogItem } from '@/components/admin/verification-details-dialog';
 
 type AuditLog = {
   id: string;
@@ -36,6 +52,9 @@ type AuditLog = {
 type VerificationLog = {
   id: string;
   licenseKey: string | null;
+  softwareName?: string | null;
+  hwid?: string | null;
+  deviceName?: string | null;
   ipAddress: string;
   success: boolean;
   reason: string | null;
@@ -184,7 +203,22 @@ export default function AuditLogsTable() {
   const { toast } = useToast();
   const router = useRouter();
 
-  // 跳转授权详情：按 licenseKey 查询 license id 后跳转
+  const [activeTab, setActiveTab] = useState<'verification' | 'audit'>('verification');
+  const [softwares, setSoftwares] = useState<{ id: string; name: string }[]>([]);
+
+  const [vLogs, setVLogs] = useState<VerificationLog[]>([]);
+  const [vLoading, setVLoading] = useState(true);
+  const [vSearch, setVSearch] = useState('');
+  const [vStatus, setVStatus] = useState<'all' | 'success' | 'failed'>('all');
+  const [vSoftware, setVSoftware] = useState<string>('all');
+  const [vPage, setVPage] = useState(1);
+  const [vTotal, setVTotal] = useState(0);
+  const pageSize = 20;
+
+  const [selectedVLog, setSelectedVLog] = useState<VerificationLogItem | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [copiedInlineId, setCopiedInlineId] = useState<string | null>(null);
+
   const [navigatingKeyId, setNavigatingKeyId] = useState<string | null>(null);
   const handleNavigateToLicense = useCallback(async (logId: string, licenseKey: string) => {
     setNavigatingKeyId(logId);
@@ -214,24 +248,62 @@ export default function AuditLogsTable() {
     }
   }, [router, toast]);
 
-  // ── 选项卡状态 ──
-  const [activeTab, setActiveTab] = useState<'verification' | 'audit'>('verification');
+  const handleInlineCopy = (e: React.MouseEvent, text: string, id: string, label: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text);
+    setCopiedInlineId(id);
+    setTimeout(() => setCopiedInlineId(null), 1500);
+    toast({
+      title: '已复制',
+      description: `${label} 已复制到剪贴板`,
+    });
+  };
 
-  // ── 授权验证记录状态 ──
-  const [vLogs, setVLogs] = useState<VerificationLog[]>([]);
-  const [vLoading, setVLoading] = useState(true);
-  const [vSearch, setVSearch] = useState('');
-  const [vStatus, setVStatus] = useState<'all' | 'success' | 'failed'>('all');
-  const [vPage, setVPage] = useState(1);
-  const [vTotal, setVTotal] = useState(0);
-  const pageSize = 20;
+  const handleQuickBlacklist = async (e: React.MouseEvent, type: 'ip' | 'hwid', value: string) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch('/api/admin/blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          value,
+          reason: `从验证记录列表快捷拉黑`,
+          days: 0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '添加黑名单失败');
+      toast({
+        title: '已加入黑名单',
+        description: `已将 ${type === 'ip' ? 'IP' : 'HWID'}「${value}」永久拉黑`,
+      });
+      fetchVerificationLogs();
+    } catch (err: any) {
+      toast({
+        title: '拉黑失败',
+        description: err.message || '操作失败',
+        variant: 'destructive',
+      });
+    }
+  };
 
-  // ── 管理员操作日志状态 ──
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditSearch, setAuditSearch] = useState('');
 
-  // 获取授权验证记录
+  const fetchSoftwares = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/softwares');
+      if (res.ok) {
+        const data = await res.json();
+        setSoftwares(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch softwares for filter:', err);
+    }
+  }, []);
+
   const fetchVerificationLogs = useCallback(async () => {
     setVLoading(true);
     try {
@@ -241,6 +313,7 @@ export default function AuditLogsTable() {
       });
       if (vSearch.trim()) params.set('search', vSearch.trim());
       if (vStatus !== 'all') params.set('status', vStatus);
+      if (vSoftware !== 'all') params.set('software', vSoftware);
 
       const res = await fetch(`/api/admin/verification-logs?${params.toString()}`);
       const result = await res.json();
@@ -260,9 +333,8 @@ export default function AuditLogsTable() {
     } finally {
       setVLoading(false);
     }
-  }, [vPage, vSearch, vStatus, toast]);
+  }, [vPage, vSearch, vStatus, vSoftware, toast]);
 
-  // 获取操作审计日志
   const fetchAuditLogs = useCallback(async () => {
     setAuditLoading(true);
     try {
@@ -289,6 +361,18 @@ export default function AuditLogsTable() {
     window.open('/api/admin/audit-logs/export', '_blank');
   };
 
+  const exportVerificationLogsToCSV = () => {
+    const params = new URLSearchParams();
+    if (vSearch.trim()) params.set('search', vSearch.trim());
+    if (vStatus !== 'all') params.set('status', vStatus);
+    if (vSoftware !== 'all') params.set('software', vSoftware);
+    window.open(`/api/admin/verification-logs/export?${params.toString()}`, '_blank');
+  };
+
+  useEffect(() => {
+    fetchSoftwares();
+  }, [fetchSoftwares]);
+
   useEffect(() => {
     if (activeTab === 'verification') {
       fetchVerificationLogs();
@@ -297,20 +381,16 @@ export default function AuditLogsTable() {
     }
   }, [activeTab, fetchVerificationLogs, fetchAuditLogs]);
 
-  // 格式化验证原因
   const formatReason = (reason: string | null) => {
     if (!reason) return '-';
     const bracketIndex = reason.indexOf(' [');
     if (bracketIndex !== -1) {
       const code = reason.slice(0, bracketIndex);
-      const extra = reason.slice(bracketIndex + 1);
-      const label = REASON_MAP[code] || code;
-      return `${label} ${extra}`;
+      return REASON_MAP[code] || code;
     }
     return REASON_MAP[reason] || reason;
   };
 
-  // 过滤操作审计日志
   const filteredAuditLogs = auditLogs.filter((log) => {
     const adminName = log.admin?.username || '系统';
     const actionLabel = ACTION_MAP[log.action]?.label || log.action;
@@ -357,288 +437,458 @@ export default function AuditLogsTable() {
   const totalPages = Math.max(1, Math.ceil(vTotal / pageSize));
 
   return (
-    <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as 'verification' | 'audit')}>
-      <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
-        <TabsTrigger value="verification" className="gap-2">
-          <ShieldCheck className="h-4 w-4" />
-          授权验证记录
-        </TabsTrigger>
-        <TabsTrigger value="audit" className="gap-2">
-          <ClipboardList className="h-4 w-4" />
-          操作审计日志
-        </TabsTrigger>
-      </TabsList>
+    <>
+      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as 'verification' | 'audit')}>
+        <TabsList className="grid w-full max-w-[400px] grid-cols-2 mb-6">
+          <TabsTrigger value="verification" className="gap-2">
+            <ShieldCheck className="h-4 w-4" />
+            授权验证记录
+          </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-2">
+            <ClipboardList className="h-4 w-4" />
+            操作审计日志
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ── 授权验证记录 ── */}
-      <TabsContent value="verification">
-        <Card>
-          <CardHeader className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
-            <div>
-              <CardTitle className="text-xl">客户端授权验证记录</CardTitle>
-              <CardDescription>
-                记录客户端每次发起软件授权验证的请求状态与拦截原因（心跳请求已自动忽略）
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fetchVerificationLogs()}
-              disabled={vLoading}
-            >
-              {vLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCcw className="h-4 w-4" />
-              )}
-              <span className="sr-only">刷新</span>
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col md:flex-row gap-3 pb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="搜索卡密、客户端 IP 或失败原因..."
-                  className="pl-8"
-                  value={vSearch}
-                  onChange={(e) => {
-                    setVSearch(e.target.value);
-                    setVPage(1);
-                  }}
-                />
+        <TabsContent value="verification">
+          <Card>
+            <CardHeader className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
+              <div>
+                <CardTitle className="text-xl">客户端授权验证记录</CardTitle>
+                <CardDescription>
+                  记录客户端每次发起软件授权验证的请求状态、设备特征码与拦截原因（心跳请求已自动忽略）
+                </CardDescription>
               </div>
-
-              <div className="w-full md:w-[180px]">
-                <Select
-                  value={vStatus}
-                  onValueChange={(val: 'all' | 'success' | 'failed') => {
-                    setVStatus(val);
-                    setVPage(1);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="筛选状态" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部状态</SelectItem>
-                    <SelectItem value="success">仅成功</SelectItem>
-                    <SelectItem value="failed">仅拦截 / 失败</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[170px]">请求时间</TableHead>
-                    <TableHead>授权卡密</TableHead>
-                    <TableHead className="w-[140px]">客户端 IP</TableHead>
-                    <TableHead className="w-[110px]">验证状态</TableHead>
-                    <TableHead>结果 / 详情</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {vLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center h-28">
-                        <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                        <p className="text-sm text-muted-foreground mt-2">正在加载授权验证记录...</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : vLogs.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center h-28">
-                        <ShieldAlert className="h-8 w-8 mx-auto text-muted-foreground" />
-                        <p className="text-muted-foreground mt-2">暂无授权验证记录</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    vLogs.map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell className="text-xs">{formatDate(log.createdAt)}</TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {log.licenseKey ? (
-                            <div className="flex items-center gap-1">
-                              <span className="bg-muted/70 px-1.5 py-0.5 rounded inline-block">
-                                <MaskedText value={log.licenseKey} head={6} tail={4} />
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 shrink-0"
-                                onClick={() => handleNavigateToLicense(log.id, log.licenseKey!)}
-                                disabled={navigatingKeyId === log.id}
-                                title="跳转至该授权详情页"
-                              >
-                                {navigatingKeyId === log.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <ExternalLink className="h-3 w-3" />
-                                )}
-                                <span className="sr-only">跳转授权详情</span>
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">{log.ipAddress}</TableCell>
-                        <TableCell>
-                          {log.success ? (
-                            <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                              验证成功
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive">拦截拒绝</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell
-                          className="text-xs text-muted-foreground max-w-[280px]"
-                          title={log.reason ? `${formatReason(log.reason)}\n完整详细信息: ${log.reason}` : '验证通过'}
-                        >
-                          <span className="cursor-help hover:text-foreground transition-colors line-clamp-1">
-                            {formatReason(log.reason)}
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* 分页控制栏 */}
-            <div className="flex items-center justify-between pt-4">
-              <p className="text-xs text-muted-foreground">
-                共 {vTotal} 条记录，第 {vPage} / {totalPages} 页
-              </p>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setVPage((p) => Math.max(1, p - 1))}
-                  disabled={vPage <= 1 || vLoading}
+                  onClick={exportVerificationLogsToCSV}
+                  disabled={vLoading || vTotal === 0}
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  上一页
+                  <Download className="h-4 w-4 mr-2" />
+                  导出 CSV
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setVPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={vPage >= totalPages || vLoading}
+                  onClick={() => fetchVerificationLogs()}
+                  disabled={vLoading}
                 >
-                  下一页
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  {vLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="h-4 w-4" />
+                  )}
+                  <span className="sr-only">刷新</span>
                 </Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col md:flex-row gap-3 pb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="搜索卡密、HWID、客户端 IP 或失败原因..."
+                    className="pl-8"
+                    value={vSearch}
+                    onChange={(e) => {
+                      setVSearch(e.target.value);
+                      setVPage(1);
+                    }}
+                  />
+                </div>
 
-      {/* ── 管理员操作日志 ── */}
-      <TabsContent value="audit">
-        <Card>
-          <CardHeader className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
-            <div>
-              <CardTitle className="text-xl">管理员操作审计记录</CardTitle>
-              <CardDescription>审计系统管理员执行的操作变更</CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportAuditLogsToCSV}
-                disabled={auditLoading}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                导出 CSV
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchAuditLogs}
-                disabled={auditLoading}
-              >
-                {auditLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCcw className="h-4 w-4" />
-                )}
-                <span className="sr-only">刷新</span>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center pb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="搜索管理员、动作名称、目标 ID 或详情内容..."
-                  className="pl-8"
-                  value={auditSearch}
-                  onChange={(e) => setAuditSearch(e.target.value)}
-                />
+                <div className="w-full md:w-[160px]">
+                  <Select
+                    value={vSoftware}
+                    onValueChange={(val: string) => {
+                      setVSoftware(val);
+                      setVPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="全部软件" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部软件</SelectItem>
+                      {softwares.map((sw) => (
+                        <SelectItem key={sw.id} value={sw.name}>
+                          {sw.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="w-full md:w-[150px]">
+                  <Select
+                    value={vStatus}
+                    onValueChange={(val: 'all' | 'success' | 'failed') => {
+                      setVStatus(val);
+                      setVPage(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="筛选状态" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">全部状态</SelectItem>
+                      <SelectItem value="success">仅成功</SelectItem>
+                      <SelectItem value="failed">仅拦截 / 失败</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
 
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[170px]">操作时间</TableHead>
-                    <TableHead className="w-[120px]">管理员</TableHead>
-                    <TableHead className="w-[120px]">操作动作</TableHead>
-                    <TableHead className="w-[100px]">目标类型</TableHead>
-                    <TableHead className="w-[160px]">目标 ID</TableHead>
-                    <TableHead>操作详情</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {auditLoading ? (
+              <div className="rounded-md border overflow-hidden">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24">
-                        <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                        <p className="text-sm text-muted-foreground mt-2">正在加载操作日志...</p>
-                      </TableCell>
+                      <TableHead className="w-[155px]">请求时间</TableHead>
+                      <TableHead className="w-[105px]">所属软件</TableHead>
+                      <TableHead className="min-w-[140px]">授权卡密</TableHead>
+                      <TableHead className="w-[125px]">客户端 IP</TableHead>
+                      <TableHead className="min-w-[140px]">硬件特征码 (HWID)</TableHead>
+                      <TableHead className="w-[95px]">验证状态</TableHead>
+                      <TableHead>结果 / 详情</TableHead>
+                      <TableHead className="w-[70px] text-right">操作</TableHead>
                     </TableRow>
-                  ) : filteredAuditLogs.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24">
-                        <ClipboardList className="h-8 w-8 mx-auto text-muted-foreground" />
-                        <p className="text-muted-foreground mt-2">未找到操作日志</p>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredAuditLogs.map((log) => (
-                      <TableRow key={log.id}>
-                        <TableCell className="text-xs">{formatDate(log.createdAt)}</TableCell>
-                        <TableCell className="font-medium text-xs">{log.admin?.username || '系统'}</TableCell>
-                        <TableCell>{getActionBadge(log.action)}</TableCell>
-                        <TableCell className="text-xs">{getTargetTypeLabel(log.targetType)}</TableCell>
-                        <TableCell className="font-mono text-xs truncate max-w-[160px]" title={log.targetId}>
-                          {log.targetId}
-                        </TableCell>
-                        <TableCell
-                          className="text-xs text-muted-foreground truncate max-w-[240px]"
-                          title={log.details || ''}
-                        >
-                          {formatDetails(log.details)}
+                  </TableHeader>
+                  <TableBody>
+                    {vLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center h-28">
+                          <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                          <p className="text-sm text-muted-foreground mt-2">正在加载授权验证记录...</p>
                         </TableCell>
                       </TableRow>
-                    ))
+                    ) : vLogs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center h-28">
+                          <ShieldAlert className="h-8 w-8 mx-auto text-muted-foreground" />
+                          <p className="text-muted-foreground mt-2">暂无授权验证记录</p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      vLogs.map((rawLog) => {
+                        let softwareName = rawLog.softwareName;
+                        let hwid = rawLog.hwid;
+                        if ((!softwareName || !hwid) && rawLog.reason) {
+                          const matchApp = rawLog.reason.match(/app:([^, \]]+)/);
+                          const matchHwid = rawLog.reason.match(/hwid:([^, \]]+)/);
+                          if (!softwareName && matchApp) softwareName = matchApp[1];
+                          if (!hwid && matchHwid) hwid = matchHwid[1];
+                        }
+                        const log = { ...rawLog, softwareName, hwid };
+                        const copyKeyId = `key_${log.id}`;
+                        const copyIpId = `ip_${log.id}`;
+                        const copyHwidId = `hwid_${log.id}`;
+
+                        return (
+                          <TableRow key={log.id} className="hover:bg-muted/40 transition-colors">
+                            <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                              {formatDate(log.createdAt)}
+                            </TableCell>
+
+                            <TableCell className="text-xs">
+                              {log.softwareName ? (
+                                <Badge variant="outline" className="font-normal text-[11px] px-1.5 py-0">
+                                  {log.softwareName}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">-</span>
+                              )}
+                            </TableCell>
+
+                            <TableCell className="font-mono text-xs">
+                              {log.licenseKey ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="bg-muted/70 px-1.5 py-0.5 rounded inline-block">
+                                    <MaskedText value={log.licenseKey} head={6} tail={4} />
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => handleInlineCopy(e, log.licenseKey!, copyKeyId, '卡密')}
+                                    title="复制卡密"
+                                  >
+                                    {copiedInlineId === copyKeyId ? (
+                                      <Check className="h-3 w-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                    <span className="sr-only">复制卡密</span>
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
+                                    onClick={() => handleNavigateToLicense(log.id, log.licenseKey!)}
+                                    disabled={navigatingKeyId === log.id}
+                                    title="跳转至该授权详情页"
+                                  >
+                                    {navigatingKeyId === log.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <ExternalLink className="h-3 w-3" />
+                                    )}
+                                    <span className="sr-only">跳转授权详情</span>
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+
+                            <TableCell className="font-mono text-xs">
+                              <div className="flex items-center gap-1">
+                                <span>{log.ipAddress}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
+                                  onClick={(e) => handleInlineCopy(e, log.ipAddress, copyIpId, 'IP 地址')}
+                                  title="复制 IP 地址"
+                                >
+                                  {copiedInlineId === copyIpId ? (
+                                    <Check className="h-3 w-3 text-emerald-600" />
+                                  ) : (
+                                    <Copy className="h-3 w-3" />
+                                  )}
+                                  <span className="sr-only">复制 IP</span>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
+                                  onClick={(e) => handleQuickBlacklist(e, 'ip', log.ipAddress)}
+                                  title="快捷拉黑此 IP"
+                                >
+                                  <Ban className="h-3 w-3" />
+                                  <span className="sr-only">拉黑 IP</span>
+                                </Button>
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="font-mono text-xs">
+                              {log.hwid ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="bg-muted/70 px-1.5 py-0.5 rounded inline-block">
+                                    <MaskedText value={log.hwid} head={6} tail={4} />
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
+                                    onClick={(e) => handleInlineCopy(e, log.hwid!, copyHwidId, '硬件特征码 (HWID)')}
+                                    title="复制 HWID"
+                                  >
+                                    {copiedInlineId === copyHwidId ? (
+                                      <Check className="h-3 w-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                    <span className="sr-only">复制 HWID</span>
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
+                                    onClick={(e) => handleQuickBlacklist(e, 'hwid', log.hwid!)}
+                                    title="快捷拉黑此 HWID"
+                                  >
+                                    <Ban className="h-3 w-3" />
+                                    <span className="sr-only">拉黑 HWID</span>
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+
+                            <TableCell>
+                              {log.success ? (
+                                <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-xs whitespace-nowrap">
+                                  验证成功
+                                </Badge>
+                              ) : (
+                                <Badge variant="destructive" className="text-xs whitespace-nowrap">
+                                  拦截拒绝
+                                </Badge>
+                              )}
+                            </TableCell>
+
+                            <TableCell
+                              className="text-xs text-muted-foreground max-w-[200px]"
+                              title={log.reason ? `${formatReason(log.reason)}\n完整原因码: ${log.reason}` : '验证通过'}
+                            >
+                              <span className="cursor-help hover:text-foreground transition-colors line-clamp-1">
+                                {formatReason(log.reason)}
+                              </span>
+                            </TableCell>
+
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs px-2 gap-1"
+                                onClick={() => {
+                                  setSelectedVLog(log);
+                                  setIsDetailsOpen(true);
+                                }}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                详情
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex items-center justify-between pt-4">
+                <p className="text-xs text-muted-foreground">
+                  共 {vTotal} 条记录，第 {vPage} / {totalPages} 页
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setVPage((p) => Math.max(1, p - 1))}
+                    disabled={vPage <= 1 || vLoading}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    上一页
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setVPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={vPage >= totalPages || vLoading}
+                  >
+                    下一页
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <Card>
+            <CardHeader className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
+              <div>
+                <CardTitle className="text-xl">管理员操作审计记录</CardTitle>
+                <CardDescription>审计系统管理员执行的操作变更</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportAuditLogsToCSV}
+                  disabled={auditLoading}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  导出 CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchAuditLogs}
+                  disabled={auditLoading}
+                >
+                  {auditLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="h-4 w-4" />
                   )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </TabsContent>
-    </Tabs>
+                  <span className="sr-only">刷新</span>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center pb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="搜索管理员、动作名称、目标 ID 或详情内容..."
+                    className="pl-8"
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[170px]">操作时间</TableHead>
+                      <TableHead className="w-[120px]">管理员</TableHead>
+                      <TableHead className="w-[120px]">操作动作</TableHead>
+                      <TableHead className="w-[100px]">目标类型</TableHead>
+                      <TableHead className="w-[160px]">目标 ID</TableHead>
+                      <TableHead>操作详情</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {auditLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center h-24">
+                          <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                          <p className="text-sm text-muted-foreground mt-2">正在加载操作日志...</p>
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredAuditLogs.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center h-24">
+                          <ClipboardList className="h-8 w-8 mx-auto text-muted-foreground" />
+                          <p className="text-muted-foreground mt-2">未找到操作日志</p>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredAuditLogs.map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell className="text-xs">{formatDate(log.createdAt)}</TableCell>
+                          <TableCell className="font-medium text-xs">{log.admin?.username || '系统'}</TableCell>
+                          <TableCell>{getActionBadge(log.action)}</TableCell>
+                          <TableCell className="text-xs">{getTargetTypeLabel(log.targetType)}</TableCell>
+                          <TableCell className="font-mono text-xs truncate max-w-[160px]" title={log.targetId}>
+                            {log.targetId}
+                          </TableCell>
+                          <TableCell
+                            className="text-xs text-muted-foreground truncate max-w-[240px]"
+                            title={log.details || ''}
+                          >
+                            {formatDetails(log.details)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <VerificationDetailsDialog
+        open={isDetailsOpen}
+        onOpenChange={setIsDetailsOpen}
+        log={selectedVLog}
+        onBlacklistAdded={() => {
+          fetchVerificationLogs();
+        }}
+      />
+    </>
   );
 }

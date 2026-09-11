@@ -150,6 +150,9 @@ export default function BatchChangeSoftwareDialog({
                   <SelectValue placeholder="选择所属软件" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="ALL" className="font-medium text-primary">
+                    全部软件 (通用授权 / ALL)
+                  </SelectItem>
                   {softwares.map((sw) => (
                     <SelectItem key={sw.id} value={sw.name}>
                       {sw.name}

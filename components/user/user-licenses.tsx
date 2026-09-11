@@ -164,7 +164,15 @@ export default function UserLicenses() {
                           </Button>
                         </div>
                       </TableCell>
-                      <TableCell>{license.softwareName}</TableCell>
+                      <TableCell>
+                        {license.softwareName === 'ALL' || license.softwareName === '*' ? (
+                          <Badge variant="outline" className="font-semibold text-purple-600 border-purple-300 bg-purple-500/10">
+                            全部软件 (通用)
+                          </Badge>
+                        ) : (
+                          license.softwareName
+                        )}
+                      </TableCell>
                       <TableCell>
                         {license.licenseType === 'duration' ? (
                           <Badge variant="outline" className="text-yellow-600 border-yellow-600 bg-yellow-500/5">

@@ -103,9 +103,9 @@ export default function AddBlacklistDialog({
             </div>
 
             <div className="grid gap-2">
-              <Label>{type === 'ip' ? 'IP 地址' : 'HWID'}</Label>
+              <Label>{type === 'ip' ? 'IP 地址 / 网段' : 'HWID 特征码'}</Label>
               <Input
-                placeholder={type === 'ip' ? '例如 1.2.3.4' : '例如 HWID-A1B2C3D4'}
+                placeholder={type === 'ip' ? '例如 1.2.3.4 或 1.2.3.0/24 或 1.2.*.*' : '例如 HW-A1B2C3D4'}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 disabled={isSubmitting}

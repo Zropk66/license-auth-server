@@ -67,6 +67,7 @@ export default function BatchGenerateDialog({
   const [hardwareBindingEnabled, setHardwareBindingEnabled] = useState(true);
   const [allowSelfUnbind, setAllowSelfUnbind] = useState(true);
   const [userId, setUserId] = useState<string>('default');
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     if (!open) {
@@ -125,6 +126,7 @@ export default function BatchGenerateDialog({
         licenseType,
         hardwareBindingEnabled,
         allowSelfUnbind,
+        note: note ? note.trim() : undefined,
       };
 
       if (userId && userId !== 'default') {
@@ -249,6 +251,9 @@ export default function BatchGenerateDialog({
                     <SelectValue placeholder="选择软件" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="ALL" className="font-medium text-primary">
+                      全部软件 (通用授权 / ALL)
+                    </SelectItem>
                     {softwares.map((sw) => (
                       <SelectItem key={sw.id} value={sw.name}>
                         {sw.name}
@@ -362,6 +367,17 @@ export default function BatchGenerateDialog({
                   />
                 </div>
               )}
+
+              <div className="space-y-1.5 pt-1">
+                <Label htmlFor="note" className="text-xs">批次备注 (选填)</Label>
+                <Input
+                  id="note"
+                  placeholder=""
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={500}
+                />
+              </div>
             </div>
 
             <div className="space-y-3 rounded-lg border p-3.5 bg-muted/20">

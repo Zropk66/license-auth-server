@@ -5,6 +5,7 @@ export interface VerificationLogParams {
   licenseKey?: string | null;
   softwareName?: string | null;
   hwid?: string | null;
+  deviceName?: string | null;
   success: boolean;
   reason?: string | null;
 }
@@ -17,6 +18,7 @@ export async function logVerificationAttempt({
   licenseKey,
   softwareName,
   hwid,
+  deviceName,
   success,
   reason,
 }: VerificationLogParams): Promise<void> {
@@ -35,31 +37,29 @@ export async function logVerificationAttempt({
     `[AUTH VERIFY] ${time} | ${statusLabel} | IP: ${ipAddress} | Key: ${keyDisplay} | App: ${appDisplay} | HWID: ${hwidDisplay}`
   );
 
-  // 补充附带信息存入 reason，方便在后台界面直观展示软件名与设备
-  let storedReason = reason || (success ? 'success' : null);
-  const details: string[] = [];
-  if (softwareName) details.push(`app:${softwareName}`);
-  if (hwid) details.push(`hwid:${hwid.length > 12 ? hwid.slice(0, 12) + '...' : hwid}`);
-  if (details.length > 0) {
-    storedReason = storedReason ? `${storedReason} [${details.join(', ')}]` : `[${details.join(', ')}]`;
-  }
-
   try {
     await prisma.verificationAttempt.create({
       data: {
         licenseKey: licenseKey || null,
+        softwareName: softwareName || null,
+        hwid: hwid || null,
+        deviceName: deviceName || null,
         ipAddress,
         success,
-        reason: storedReason,
+        reason: reason || (success ? 'success' : null),
       },
     });
   } catch (err) {
     console.error('[VERIFY-LOG-FAILED]', {
       ipAddress,
       licenseKey,
+      softwareName,
+      hwid,
+      deviceName,
       success,
       reason,
       error: err instanceof Error ? err.message : String(err),
     });
   }
 }
+

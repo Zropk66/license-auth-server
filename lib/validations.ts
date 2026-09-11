@@ -23,6 +23,7 @@ export const createLicenseSchema = z.object({
   allowSelfUnbind: z.boolean().optional(),
   licenseType: z.enum(['fixed', 'duration']).default('fixed'),
   duration: z.number().int().positive().optional(),
+  note: z.string().max(500, '备注不能超过500字').nullish(),
 }).refine(
   (data) => {
     if (data.licenseType === 'fixed') return !!data.expirationDate;
@@ -43,6 +44,7 @@ export const batchGenerateLicenseSchema = z.object({
   allowSelfUnbind: z.boolean().default(true),
   prefix: z.string().max(20, '前缀不能超过20个字符').optional(),
   userId: z.string().optional(),
+  note: z.string().max(500, '备注不能超过500字').nullish(),
 }).refine(
   (data) => {
     if (data.licenseType === 'fixed') return !!data.expirationDate;
@@ -66,6 +68,7 @@ export const updateLicenseSchema = z.object({
   duration: z.number().int().positive().optional(),
   resetHwid: z.boolean().optional(),
   resethwid: z.boolean().optional(),
+  note: z.string().max(500, '备注不能超过500字').nullish(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'No fields to update' }

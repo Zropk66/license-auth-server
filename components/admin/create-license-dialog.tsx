@@ -53,6 +53,7 @@ const formSchema = z.object({
   durationUnit: z.enum(['minutes', 'hours', 'days', 'weeks']).default('days'),
   hardwareBindingEnabled: z.boolean().default(false),
   allowSelfUnbind: z.boolean().default(true),
+  note: z.string().max(500, '备注不能超过500字').optional(),
 }).refine(data => {
   if (data.licenseType === 'fixed') {
     return !!data.expirationDate && data.expirationDate > new Date();
@@ -200,6 +201,7 @@ export default function CreateLicenseDialog({
         licenseType: data.licenseType,
         hardwareBindingEnabled: data.hardwareBindingEnabled,
         allowSelfUnbind: data.allowSelfUnbind,
+        note: data.note ? data.note.trim() : undefined,
       };
 
       if (data.licenseType === 'fixed') {
@@ -240,6 +242,7 @@ export default function CreateLicenseDialog({
         durationUnit: 'days',
         hardwareBindingEnabled: false,
         allowSelfUnbind: globalUnbindEnabled && globalDefaultAllow,
+        note: '',
       });
       onOpenChange(false);
       onLicenseCreated(result);
@@ -323,14 +326,13 @@ export default function CreateLicenseDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                      <SelectItem value="ALL" className="font-medium text-primary">
+                        全部软件 (通用授权 / ALL)
+                      </SelectItem>
                       {loadingSoftwares ? (
                         <div className="flex items-center justify-center p-2 text-xs">
                           <Loader2 className="h-4 w-4 animate-spin mr-2" />
                           正在加载软件列表...
-                        </div>
-                      ) : softwares.length === 0 ? (
-                        <div className="p-2 text-center text-xs text-muted-foreground">
-                          暂无可用所属软件，请先前往「软件管理」添加
                         </div>
                       ) : (
                         softwares.map((sw) => (
@@ -635,6 +637,26 @@ export default function CreateLicenseDialog({
                 提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密将严格执行一机一卡不可换绑。
               </div>
             )}
+
+            <FormField
+              control={form.control}
+              name="note"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>卡密备注 (选填)</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder=""
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      disabled={isSubmitting}
+                      maxLength={500}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button

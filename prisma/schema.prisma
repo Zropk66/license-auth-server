@@ -73,6 +73,7 @@ model License {
   monthlyUnbindCount     Int       @default(0)
   unbindCountMonth       String?
   extraUnbindCount       Int       @default(0)
+  note                   String?
   createdById            String?
   createdBy              Admin?    @relation("LicenseCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -82,6 +83,7 @@ model License {
   @@index([status, expirationDate])
   @@index([activatedAt])
   @@index([createdById])
+  @@index([note])
 }
 
 model Blacklist {
@@ -202,14 +204,19 @@ model AuditLog {
 }
 
 model VerificationAttempt {
-  id         String   @id @default(cuid())
-  licenseKey String?
-  ipAddress  String
-  success    Boolean
-  reason     String?
-  createdAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  licenseKey   String?
+  softwareName String?
+  hwid         String?
+  deviceName   String?
+  ipAddress    String
+  success      Boolean
+  reason       String?
+  createdAt    DateTime @default(now())
 
   @@index([ipAddress, success, createdAt])
   @@index([licenseKey])
+  @@index([hwid])
+  @@index([softwareName])
   @@index([createdAt])
 }

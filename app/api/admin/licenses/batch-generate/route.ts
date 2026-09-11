@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       allowSelfUnbind,
       prefix,
       userId: requestedUserId,
+      note,
     } = parseResult.data;
 
     /* 确定绑定的用户账号，未指定时自动关联或创建专属批量默认用户 */
@@ -103,6 +104,7 @@ export async function POST(req: NextRequest) {
       licenseType,
       duration: isDuration ? duration! : null,
       activatedAt: isDuration ? null : now,
+      note: note ? note.trim() : null,
       createdById: authResult.payload.id,
     }));
 

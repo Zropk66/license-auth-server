@@ -31,6 +31,7 @@ interface License {
   monthlyUnbindCount?: number;
   extraUnbindCount?: number;
   hwid: string | null;
+  note?: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -52,6 +53,7 @@ const formSchema = z.object({
   durationUnit: z.enum(['minutes', 'hours', 'days', 'weeks']).default('days'),
   hardwareBindingEnabled: z.boolean(),
   allowSelfUnbind: z.boolean().default(true),
+  note: z.string().max(500, '备注不能超过500字').optional(),
 }).refine(data => {
   // If it's a fixed license, or if it's already activated (which means it behaves like fixed on expirationDate modification)
   // we require expirationDate
@@ -133,6 +135,7 @@ export default function EditLicenseDialog({
       durationUnit: initialDuration.unit,
       hardwareBindingEnabled: license.hardwareBindingEnabled,
       allowSelfUnbind: license.allowSelfUnbind !== undefined ? license.allowSelfUnbind : true,
+      note: license.note || '',
     },
   });
 
@@ -156,6 +159,7 @@ export default function EditLicenseDialog({
         durationUnit: dur.unit,
         hardwareBindingEnabled: license.hardwareBindingEnabled,
         allowSelfUnbind: license.allowSelfUnbind !== undefined ? license.allowSelfUnbind : true,
+        note: license.note || '',
       });
     }
   }, [open, license, form]);
@@ -193,6 +197,7 @@ export default function EditLicenseDialog({
         softwareName: data.softwareName,
         hardwareBindingEnabled: data.hardwareBindingEnabled,
         allowSelfUnbind: data.allowSelfUnbind,
+        note: data.note !== undefined ? data.note.trim() : undefined,
       };
 
       const isUnactivatedDuration = license.status === 'unactivated' && license.licenseType === 'duration';
@@ -268,14 +273,13 @@ export default function EditLicenseDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                      <SelectItem value="ALL" className="font-medium text-primary">
+                        全部软件 (通用授权 / ALL)
+                      </SelectItem>
                       {loadingSoftwares ? (
                         <div className="flex items-center justify-center p-2 text-xs">
                           <Loader2 className="h-4 w-4 animate-spin mr-2" />
                           正在加载软件列表...
-                        </div>
-                      ) : softwares.length === 0 ? (
-                        <div className="p-2 text-center text-xs text-muted-foreground">
-                          暂无可用所属软件
                         </div>
                       ) : (
                         softwares.map((sw) => (
@@ -549,6 +553,26 @@ export default function EditLicenseDialog({
                 提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密为一机一卡不可换绑。
               </div>
             )}
+
+            <FormField
+              control={form.control}
+              name="note"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>卡密备注 (选填)</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder=""
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      disabled={isSubmitting}
+                      maxLength={500}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button

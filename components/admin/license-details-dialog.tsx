@@ -45,8 +45,10 @@ import {
   History,
   Info,
   Clock,
+  Ban,
+  FileText,
 } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatLicenseRemaining } from '@/lib/utils';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import EditLicenseDialog from '@/components/admin/edit-license-dialog';
@@ -66,6 +68,7 @@ export interface LicenseDetails {
   extraUnbindCount?: number;
   hwid: string | null;
   deviceName?: string | null;
+  note?: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -343,6 +346,33 @@ export default function LicenseDetailsDialog({
     }
   };
 
+  const handleBlacklistHwid = async (hwidToBan: string) => {
+    try {
+      const res = await fetch('/api/admin/blacklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'hwid',
+          value: hwidToBan,
+          reason: `从授权详情封禁 (${license?.licenseKey || ''})`,
+          days: 0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '添加黑名单失败');
+      toast({
+        title: '已拉黑 HWID',
+        description: `已将特征码「${hwidToBan}」永久加入黑名单`,
+      });
+    } catch (err: any) {
+      toast({
+        title: '拉黑失败',
+        description: err.message || '操作失败',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleAddUnbindCount = async () => {
     if (!license) return;
     const count = parseInt(countToAdd, 10);
@@ -530,7 +560,11 @@ export default function LicenseDetailsDialog({
                     {getStatusBadge()}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">{license.softwareName}</span>
+                    <span className="font-medium text-foreground">
+                      {license.softwareName === 'ALL' || license.softwareName === '*'
+                        ? '全部软件 (通用授权)'
+                        : license.softwareName}
+                    </span>
                     <span>•</span>
                     <span>
                       {license.licenseType === 'duration'
@@ -607,9 +641,24 @@ export default function LicenseDetailsDialog({
                     </div>
 
                     <div className="p-3.5 rounded-lg border bg-card space-y-3">
-                      <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-primary" />
-                        授权时效与时间线
+                      <div className="text-xs font-semibold text-foreground flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="h-3.5 w-3.5 text-primary" />
+                          授权时效与时间线
+                        </span>
+                        {(() => {
+                          const rem = formatLicenseRemaining(
+                            license.expirationDate,
+                            license.status,
+                            license.licenseType,
+                            license.duration
+                          );
+                          return (
+                            <span className={`text-xs ${rem.colorClass}`}>
+                              {rem.text}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -634,6 +683,26 @@ export default function LicenseDetailsDialog({
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg border bg-muted/20 space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <FileText className="h-3.5 w-3.5 text-primary" />
+                          卡密备注
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs px-2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setIsEditDialogOpen(true)}
+                        >
+                          修改备注
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground bg-card p-2.5 rounded border leading-relaxed">
+                        {license.note || '暂无备注说明'}
+                      </p>
                     </div>
                   </TabsContent>
 
@@ -677,6 +746,36 @@ export default function LicenseDetailsDialog({
                                 >
                                   <Copy className="h-3 w-3" />
                                 </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                                      title="拉黑此 HWID"
+                                    >
+                                      <Ban className="h-3 w-3" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>确认拉黑此硬件特征码？</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        特征码: {license.hwid}<br />
+                                        加入黑名单后，该设备将无法通过任何卡密进行授权验证与登录。
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>取消</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        onClick={() => handleBlacklistHwid(license.hwid!)}
+                                      >
+                                        确认拉黑
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
                               </>
                             ) : (
                               <span className="text-muted-foreground">暂未绑定任何设备</span>
@@ -1048,15 +1147,47 @@ export default function LicenseDetailsDialog({
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 font-mono text-xs text-foreground font-medium">
                           <MaskedText value={hist.hwid} head={8} tail={6} className="text-xs" />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 shrink-0"
-                            onClick={() => copyToClipboard(hist.hwid, '历史 HWID')}
-                          >
-                            <Copy className="h-3 w-3" />
-                            <span className="sr-only">复制 HWID</span>
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 shrink-0"
+                              onClick={() => copyToClipboard(hist.hwid, '历史 HWID')}
+                            >
+                              <Copy className="h-3 w-3" />
+                              <span className="sr-only">复制 HWID</span>
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
+                                  title="拉黑此历史 HWID"
+                                >
+                                  <Ban className="h-3 w-3" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>确认拉黑该历史设备特征码？</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    特征码: {hist.hwid}<br />
+                                    加入黑名单后，该设备将无法通过任何卡密进行授权验证与登录。
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>取消</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    onClick={() => handleBlacklistHwid(hist.hwid)}
+                                  >
+                                    确认拉黑
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                           {isCurrent ? (
                             <Badge className="text-[10px] px-1.5 py-0 bg-emerald-600 hover:bg-emerald-700 text-white font-normal">
                               当前绑定

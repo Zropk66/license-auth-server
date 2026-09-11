@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
       '设备名称',
       '允许自主换绑',
       '最后换绑时间',
+      '卡密备注',
       '创建时间',
       '创建者',
     ];
@@ -95,6 +96,7 @@ export async function GET(req: NextRequest) {
         item.deviceName || '-',
         item.allowSelfUnbind ? '是' : '否',
         lastUnboundAtStr,
+        item.note || '-',
         formatDate(item.createdAt),
         item.createdBy?.username || '系统',
       ];
