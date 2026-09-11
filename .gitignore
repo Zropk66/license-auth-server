@@ -53,6 +53,9 @@ __pycache__/
 .idea/
 .vscode/
 .claude/
+.trae/
+.trae-html-share-packages/
+recipes.json
 *.suo
 *.ntvs*
 *.njsproj
