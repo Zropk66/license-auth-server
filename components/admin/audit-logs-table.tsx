@@ -25,10 +25,7 @@ import {
   ChevronRight,
   ExternalLink,
   Download,
-  Copy,
-  Check,
   Eye,
-  Ban,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { formatDate } from '@/lib/utils';
@@ -217,7 +214,6 @@ export default function AuditLogsTable() {
 
   const [selectedVLog, setSelectedVLog] = useState<VerificationLogItem | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [copiedInlineId, setCopiedInlineId] = useState<string | null>(null);
 
   const [navigatingKeyId, setNavigatingKeyId] = useState<string | null>(null);
   const handleNavigateToLicense = useCallback(async (logId: string, licenseKey: string) => {
@@ -247,46 +243,6 @@ export default function AuditLogsTable() {
       setNavigatingKeyId(null);
     }
   }, [router, toast]);
-
-  const handleInlineCopy = (e: React.MouseEvent, text: string, id: string, label: string) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(text);
-    setCopiedInlineId(id);
-    setTimeout(() => setCopiedInlineId(null), 1500);
-    toast({
-      title: '已复制',
-      description: `${label} 已复制到剪贴板`,
-    });
-  };
-
-  const handleQuickBlacklist = async (e: React.MouseEvent, type: 'ip' | 'hwid', value: string) => {
-    e.stopPropagation();
-    try {
-      const res = await fetch('/api/admin/blacklist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          value,
-          reason: `从验证记录列表快捷拉黑`,
-          days: 0,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '添加黑名单失败');
-      toast({
-        title: '已加入黑名单',
-        description: `已将 ${type === 'ip' ? 'IP' : 'HWID'}「${value}」永久拉黑`,
-      });
-      fetchVerificationLogs();
-    } catch (err: any) {
-      toast({
-        title: '拉黑失败',
-        description: err.message || '操作失败',
-        variant: 'destructive',
-      });
-    }
-  };
 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
@@ -547,10 +503,9 @@ export default function AuditLogsTable() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[155px]">请求时间</TableHead>
-                      <TableHead className="w-[105px]">所属软件</TableHead>
+                      <TableHead className="w-[110px]">所属软件</TableHead>
                       <TableHead className="min-w-[140px]">授权卡密</TableHead>
-                      <TableHead className="w-[125px]">客户端 IP</TableHead>
-                      <TableHead className="min-w-[140px]">硬件特征码 (HWID)</TableHead>
+                      <TableHead className="min-w-[160px]">客户端 / 设备</TableHead>
                       <TableHead className="w-[95px]">验证状态</TableHead>
                       <TableHead>结果 / 详情</TableHead>
                       <TableHead className="w-[70px] text-right">操作</TableHead>
@@ -559,14 +514,14 @@ export default function AuditLogsTable() {
                   <TableBody>
                     {vLoading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center h-28">
+                        <TableCell colSpan={7} className="text-center h-28">
                           <Loader2 className="h-5 w-5 animate-spin mx-auto" />
                           <p className="text-sm text-muted-foreground mt-2">正在加载授权验证记录...</p>
                         </TableCell>
                       </TableRow>
                     ) : vLogs.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center h-28">
+                        <TableCell colSpan={7} className="text-center h-28">
                           <ShieldAlert className="h-8 w-8 mx-auto text-muted-foreground" />
                           <p className="text-muted-foreground mt-2">暂无授权验证记录</p>
                         </TableCell>
@@ -582,9 +537,6 @@ export default function AuditLogsTable() {
                           if (!hwid && matchHwid) hwid = matchHwid[1];
                         }
                         const log = { ...rawLog, softwareName, hwid };
-                        const copyKeyId = `key_${log.id}`;
-                        const copyIpId = `ip_${log.id}`;
-                        const copyHwidId = `hwid_${log.id}`;
 
                         return (
                           <TableRow key={log.id} className="hover:bg-muted/40 transition-colors">
@@ -612,20 +564,6 @@ export default function AuditLogsTable() {
                                     variant="ghost"
                                     size="icon"
                                     className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
-                                    onClick={(e) => handleInlineCopy(e, log.licenseKey!, copyKeyId, '卡密')}
-                                    title="复制卡密"
-                                  >
-                                    {copiedInlineId === copyKeyId ? (
-                                      <Check className="h-3 w-3 text-emerald-600" />
-                                    ) : (
-                                      <Copy className="h-3 w-3" />
-                                    )}
-                                    <span className="sr-only">复制卡密</span>
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
                                     onClick={() => handleNavigateToLicense(log.id, log.licenseKey!)}
                                     disabled={navigatingKeyId === log.id}
                                     title="跳转至该授权详情页"
@@ -643,70 +581,19 @@ export default function AuditLogsTable() {
                               )}
                             </TableCell>
 
-                            <TableCell className="font-mono text-xs">
-                              <div className="flex items-center gap-1">
-                                <span>{log.ipAddress}</span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
-                                  onClick={(e) => handleInlineCopy(e, log.ipAddress, copyIpId, 'IP 地址')}
-                                  title="复制 IP 地址"
-                                >
-                                  {copiedInlineId === copyIpId ? (
-                                    <Check className="h-3 w-3 text-emerald-600" />
-                                  ) : (
-                                    <Copy className="h-3 w-3" />
-                                  )}
-                                  <span className="sr-only">复制 IP</span>
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
-                                  onClick={(e) => handleQuickBlacklist(e, 'ip', log.ipAddress)}
-                                  title="快捷拉黑此 IP"
-                                >
-                                  <Ban className="h-3 w-3" />
-                                  <span className="sr-only">拉黑 IP</span>
-                                </Button>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="font-mono text-xs">
-                              {log.hwid ? (
-                                <div className="flex items-center gap-1">
-                                  <span className="bg-muted/70 px-1.5 py-0.5 rounded inline-block">
-                                    <MaskedText value={log.hwid} head={6} tail={4} />
+                            <TableCell className="text-xs">
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-mono text-xs text-foreground select-all">
+                                  {log.ipAddress || '-'}
+                                </span>
+                                {log.hwid ? (
+                                  <span className="font-mono text-[11px] text-muted-foreground leading-tight" title={`HWID: ${log.hwid}`}>
+                                    HWID: <MaskedText value={log.hwid} head={4} tail={4} />
                                   </span>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
-                                    onClick={(e) => handleInlineCopy(e, log.hwid!, copyHwidId, '硬件特征码 (HWID)')}
-                                    title="复制 HWID"
-                                  >
-                                    {copiedInlineId === copyHwidId ? (
-                                      <Check className="h-3 w-3 text-emerald-600" />
-                                    ) : (
-                                      <Copy className="h-3 w-3" />
-                                    )}
-                                    <span className="sr-only">复制 HWID</span>
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
-                                    onClick={(e) => handleQuickBlacklist(e, 'hwid', log.hwid!)}
-                                    title="快捷拉黑此 HWID"
-                                  >
-                                    <Ban className="h-3 w-3" />
-                                    <span className="sr-only">拉黑 HWID</span>
-                                  </Button>
-                                </div>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
+                                ) : (
+                                  <span className="text-[11px] text-muted-foreground/60 leading-tight">未提供 HWID</span>
+                                )}
+                              </div>
                             </TableCell>
 
                             <TableCell>
