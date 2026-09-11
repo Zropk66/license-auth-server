@@ -581,19 +581,23 @@ export default function AuditLogsTable() {
                               )}
                             </TableCell>
 
-                            <TableCell className="text-xs">
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-mono text-xs text-foreground select-all">
+                            <TableCell className="text-xs font-mono">
+                              {log.hwid ? (
+                                <div className="flex flex-col gap-0.5 leading-tight">
+                                  <span className="text-foreground select-all">
+                                    <span className="text-muted-foreground/70 font-sans text-[11px] mr-1">IP:</span>
+                                    {log.ipAddress || '-'}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground select-all" title={`HWID: ${log.hwid}`}>
+                                    <span className="text-muted-foreground/70 font-sans mr-1">HWID:</span>
+                                    <MaskedText value={log.hwid} head={4} tail={4} />
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-foreground select-all">
                                   {log.ipAddress || '-'}
                                 </span>
-                                {log.hwid ? (
-                                  <span className="font-mono text-[11px] text-muted-foreground leading-tight" title={`HWID: ${log.hwid}`}>
-                                    HWID: <MaskedText value={log.hwid} head={4} tail={4} />
-                                  </span>
-                                ) : (
-                                  <span className="text-[11px] text-muted-foreground/60 leading-tight">未提供 HWID</span>
-                                )}
-                              </div>
+                              )}
                             </TableCell>
 
                             <TableCell>
