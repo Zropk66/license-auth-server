@@ -85,6 +85,8 @@ export const createSoftwareSchema = z.object({
   code: z.string().max(50).optional().nullable(),
   description: z.string().max(500).optional().nullable(),
   enabled: z.boolean().default(true),
+  minVersionCode: z.number().int('最低版本号必须为整数').min(0, '最低版本号不能小于0').optional().nullable(),
+  maxVersionCode: z.number().int('最高版本号必须为整数').min(0, '最高版本号不能小于0').optional().nullable(),
 });
 
 // Software update
@@ -93,6 +95,8 @@ export const updateSoftwareSchema = z.object({
   code: z.string().max(50).optional().nullable(),
   description: z.string().max(500).optional().nullable(),
   enabled: z.boolean().optional(),
+  minVersionCode: z.number().int('最低版本号必须为整数').min(0, '最低版本号不能小于0').optional().nullable(),
+  maxVersionCode: z.number().int('最高版本号必须为整数').min(0, '最高版本号不能小于0').optional().nullable(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'No fields to update' }

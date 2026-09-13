@@ -62,5 +62,7 @@ recipes.json
 *.sln
 *.sw?
 
-# superpowers docs
-docs/superpowers/
+# documents
+/docs/
+*.md
+documentation.md

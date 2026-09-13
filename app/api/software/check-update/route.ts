@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
-import { decryptEnvelope, encryptResponse, opaqueResponse } from '@/lib/secure-protocol';
+import {
+  decryptEnvelope,
+  encryptResponse,
+  opaqueResponse,
+  isWellFormedEnvelope,
+  expiredPlaintextResponse,
+  checkSoftwareVersionAllowed,
+} from '@/lib/secure-protocol';
 
-/**
- * v2 信封加密传输（原 GET 查询串改为 POST 加密体）：
- * 请求体 { v, envelope, payload }，payload 解密后为 { software, version, versionCode }。
- * 响应用会话密钥加密，统一 HTTP 200；解密失败一律返回乱文。
- */
 export async function POST(req: NextRequest) {
   let sessionKey: Buffer | null = null;
+  let isEncrypted = false;
 
   try {
     const ip = getClientIP(req);
@@ -20,23 +23,53 @@ export async function POST(req: NextRequest) {
     }
 
     const raw = await req.json().catch(() => null);
-    const decrypted = decryptEnvelope(raw);
-    if (!decrypted) {
-      return NextResponse.json(opaqueResponse());
+
+    let softwareParam: unknown;
+    let versionParam: unknown;
+    let versionCodeParam: unknown;
+
+    if (raw && typeof raw === 'object' && 'envelope' in raw && 'payload' in raw) {
+      const decrypted = decryptEnvelope(raw);
+      if (!decrypted) {
+        if (isWellFormedEnvelope(raw)) {
+          return NextResponse.json(expiredPlaintextResponse());
+        }
+        return NextResponse.json(opaqueResponse());
+      }
+      sessionKey = decrypted.sessionKey;
+      isEncrypted = true;
+      softwareParam = decrypted.body?.software || decrypted.body?.softwareName;
+      versionParam = decrypted.body?.version;
+      versionCodeParam = decrypted.body?.versionCode;
+    } else if (raw && typeof raw === 'object') {
+      softwareParam = raw.software || raw.softwareName;
+      versionParam = raw.version;
+      versionCodeParam = raw.versionCode;
     }
-    sessionKey = decrypted.sessionKey;
-    const enc = (obj: unknown) => NextResponse.json(encryptResponse(sessionKey as Buffer, obj));
 
-    const { software, version, versionCode } = decrypted.body || {};
+    const respond = (obj: unknown) => {
+      if (isEncrypted && sessionKey) {
+        return NextResponse.json(encryptResponse(sessionKey, obj));
+      }
+      return NextResponse.json(obj);
+    };
 
-    const softwareName = typeof software === 'string' ? software.trim() : '';
-    const currentVersion = typeof version === 'string' ? version.trim() : '';
-    const currentVersionCodeStr =
-      typeof versionCode === 'string' ? versionCode.trim() : versionCode != null ? String(versionCode) : '';
+    const softwareName = typeof softwareParam === 'string' ? softwareParam.trim() : '';
+    const currentVersion = typeof versionParam === 'string' ? versionParam.trim() : '';
+    const currentVersionCodeNum =
+      typeof versionCodeParam === 'number'
+        ? versionCodeParam
+        : typeof versionCodeParam === 'string' && !isNaN(parseInt(versionCodeParam, 10))
+        ? parseInt(versionCodeParam, 10)
+        : undefined;
 
     if (!softwareName) {
-      return enc({ error: 'Missing software parameter' });
+      return respond({ error: 'Missing software parameter' });
     }
+
+    const boundSoftware = await prisma.software.findUnique({
+      where: { name: softwareName },
+    });
 
     const latestVersion = await prisma.softwareVersion.findFirst({
       where: {
@@ -48,27 +81,48 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    if (boundSoftware) {
+      const versionCheck = checkSoftwareVersionAllowed(currentCodeOrFallback(currentVersionCodeNum, latestVersion, currentVersion), boundSoftware);
+      if (!versionCheck.allowed) {
+        return respond({
+          hasUpdate: true,
+          isExpired: true,
+          message: versionCheck.message,
+          latestVersion: latestVersion
+            ? {
+                version: latestVersion.version,
+                versionCode: latestVersion.versionCode,
+                changelog: latestVersion.changelog,
+                downloadUrl: latestVersion.downloadUrl,
+                fileHash: latestVersion.fileHash,
+                isForced: true,
+                releasedAt: latestVersion.createdAt,
+              }
+            : null,
+        });
+      }
+    }
+
     if (!latestVersion) {
-      return enc({
+      return respond({
         hasUpdate: false,
+        isExpired: false,
         message: 'No active version found for this software',
       });
     }
 
     let hasUpdate = false;
-    if (currentVersionCodeStr) {
-      const currentCode = parseInt(currentVersionCodeStr, 10);
-      if (!isNaN(currentCode)) {
-        hasUpdate = latestVersion.versionCode > currentCode;
-      }
+    if (currentVersionCodeNum !== undefined) {
+      hasUpdate = latestVersion.versionCode > currentVersionCodeNum;
     } else if (currentVersion) {
       hasUpdate = latestVersion.version !== currentVersion;
     } else {
       hasUpdate = true;
     }
 
-    return enc({
+    return respond({
       hasUpdate,
+      isExpired: false,
       latestVersion: {
         version: latestVersion.version,
         versionCode: latestVersion.versionCode,
@@ -87,4 +141,16 @@ export async function POST(req: NextRequest) {
         : opaqueResponse()
     );
   }
+}
+
+function currentCodeOrFallback(
+  code: number | undefined,
+  latestVersion: { version: string; versionCode: number } | null,
+  versionStr: string
+): number | undefined {
+  if (code !== undefined) return code;
+  if (latestVersion && versionStr && latestVersion.version === versionStr) {
+    return latestVersion.versionCode;
+  }
+  return undefined;
 }

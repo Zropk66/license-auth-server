@@ -121,14 +121,73 @@ export function encryptResponse(sessionKey: Buffer, data: unknown): SecureWireRe
   };
 }
 
-/**
- * 乱文响应：无法解密（非本协议 / 探测 / 篡改）的请求统一返回。
- * 外形与真实响应一致，内容为随机字节，长度取 128–512 字节随机值。
- */
 export function opaqueResponse(): SecureWireResponse {
   const len = 128 + Math.floor(Math.random() * 385);
   return {
     v: 2,
     payload: `${crypto.randomBytes(12).toString('hex')}:${crypto.randomBytes(16).toString('hex')}:${crypto.randomBytes(len).toString('hex')}`,
   };
+}
+
+export function isWellFormedEnvelope(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const obj = raw as Record<string, unknown>;
+  if (obj.v !== 2) return false;
+  if (typeof obj.envelope !== 'string' || obj.envelope.length < 128) return false;
+  if (typeof obj.payload !== 'string') return false;
+  const parts = obj.payload.split(':');
+  if (parts.length !== 3) return false;
+  const [ivHex, tagHex, ctHex] = parts;
+  return isHex(ivHex, 12) && isHex(tagHex, 16) && isHex(ctHex);
+}
+
+export function expiredPlaintextResponse(customMessage?: string) {
+  return {
+    success: false,
+    code: 'VERSION_EXPIRED',
+    message: customMessage || '当前版本已过期，请获取最新版本后使用。',
+  };
+}
+
+export interface VersionCheckResult {
+  allowed: boolean;
+  reason?: 'software_disabled' | 'version_expired';
+  message?: string;
+}
+
+export function checkSoftwareVersionAllowed(
+  clientVersionCode: number | undefined,
+  software: {
+    enabled: boolean;
+    minVersionCode?: number | null;
+    maxVersionCode?: number | null;
+  }
+): VersionCheckResult {
+  if (!software.enabled) {
+    return {
+      allowed: false,
+      reason: 'software_disabled',
+      message: '所属软件已被管理员停用，该软件下所有授权暂不可用。',
+    };
+  }
+
+  const currentCode = clientVersionCode ?? 0;
+
+  if (software.minVersionCode != null && currentCode < software.minVersionCode) {
+    return {
+      allowed: false,
+      reason: 'version_expired',
+      message: '当前版本已过期，请获取最新版本后使用。',
+    };
+  }
+
+  if (software.maxVersionCode != null && currentCode > software.maxVersionCode) {
+    return {
+      allowed: false,
+      reason: 'version_expired',
+      message: '当前版本已过期，请获取最新版本后使用。',
+    };
+  }
+
+  return { allowed: true };
 }

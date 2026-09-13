@@ -151,6 +151,7 @@ export default function SoftwaresPage() {
                     <TableHead>所属软件名称</TableHead>
                     <TableHead>标识代码 (Code)</TableHead>
                     <TableHead>说明描述</TableHead>
+                    <TableHead>版本号限制</TableHead>
                     <TableHead>关联授权卡密</TableHead>
                     <TableHead>发布版本数</TableHead>
                     <TableHead>启用状态</TableHead>
@@ -161,13 +162,13 @@ export default function SoftwaresPage() {
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-6 text-muted-foreground text-xs">
+                      <TableCell colSpan={9} className="text-center py-6 text-muted-foreground text-xs">
                         正在加载软件列表...
                       </TableCell>
                     </TableRow>
                   ) : filteredSoftwares.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground text-xs">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground text-xs">
                         <AppWindow className="h-8 w-8 mx-auto text-muted-foreground mb-2 opacity-50" />
                         {search ? '未找到符合条件的所属软件' : '暂无所属软件，点击右上角「添加软件」立即创建。'}
                       </TableCell>
@@ -189,6 +190,22 @@ export default function SoftwaresPage() {
                         </TableCell>
                         <TableCell className="max-w-xs truncate text-xs text-muted-foreground">
                           {s.description || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs font-mono flex items-center gap-1">
+                            {s.minVersionCode != null && s.minVersionCode > 0 ? (
+                              <Badge variant="outline" className="text-[11px] font-mono">
+                                &gt;= {s.minVersionCode}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">无限制</span>
+                            )}
+                            {s.maxVersionCode != null && (
+                              <Badge variant="outline" className="text-[11px] font-mono">
+                                &lt;= {s.maxVersionCode}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className="text-xs font-mono inline-flex items-center gap-1">

@@ -16,6 +16,8 @@ export interface SoftwareItem {
   code?: string | null;
   description?: string | null;
   enabled: boolean;
+  minVersionCode?: number | null;
+  maxVersionCode?: number | null;
   licenseCount?: number;
   versionCount?: number;
   createdAt: string;
@@ -39,6 +41,8 @@ export default function EditSoftwareDialog({
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
+  const [minVersionCode, setMinVersionCode] = useState<string>('0');
+  const [maxVersionCode, setMaxVersionCode] = useState<string>('');
   const [enabled, setEnabled] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -47,6 +51,8 @@ export default function EditSoftwareDialog({
       setName(software.name || '');
       setCode(software.code || '');
       setDescription(software.description || '');
+      setMinVersionCode(software.minVersionCode != null ? String(software.minVersionCode) : '0');
+      setMaxVersionCode(software.maxVersionCode != null ? String(software.maxVersionCode) : '');
       setEnabled(software.enabled ?? true);
     }
   }, [software, open]);
@@ -66,10 +72,15 @@ export default function EditSoftwareDialog({
 
     setIsSubmitting(true);
     try {
+      const parsedMin = minVersionCode.trim() !== '' ? parseInt(minVersionCode, 10) : 0;
+      const parsedMax = maxVersionCode.trim() !== '' ? parseInt(maxVersionCode, 10) : null;
+
       const payload = {
         name: name.trim(),
         code: code.trim() || null,
         description: description.trim() || null,
+        minVersionCode: isNaN(parsedMin) ? 0 : parsedMin,
+        maxVersionCode: parsedMax !== null && !isNaN(parsedMax) ? parsedMax : null,
         enabled,
       };
 
@@ -145,6 +156,34 @@ export default function EditSoftwareDialog({
                 disabled={isSubmitting}
                 rows={3}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-sm font-medium">最低允许版本号 (versionCode)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={minVersionCode}
+                  onChange={(e) => setMinVersionCode(e.target.value)}
+                  disabled={isSubmitting}
+                />
+                <p className="text-[11px] text-muted-foreground">低于此版本直接提示过期</p>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label className="text-sm font-medium">最高允许版本号 (可选)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="留空不限制"
+                  value={maxVersionCode}
+                  onChange={(e) => setMaxVersionCode(e.target.value)}
+                  disabled={isSubmitting}
+                />
+                <p className="text-[11px] text-muted-foreground">高于此版本提示过期</p>
+              </div>
             </div>
 
             <div className="flex items-center justify-between border rounded-lg p-3">

@@ -4,7 +4,16 @@ import prisma from '@/lib/prisma';
 import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
 import { validateNonce } from '@/lib/nonce';
-import { decryptEnvelope, encryptResponse, opaqueResponse, strField, numField } from '@/lib/secure-protocol';
+import {
+  decryptEnvelope,
+  encryptResponse,
+  opaqueResponse,
+  strField,
+  numField,
+  isWellFormedEnvelope,
+  expiredPlaintextResponse,
+  checkSoftwareVersionAllowed,
+} from '@/lib/secure-protocol';
 import { logVerificationAttempt } from '@/lib/verification-logger';
 
 /**
@@ -65,6 +74,9 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'invalid_envelope',
       });
+      if (isWellFormedEnvelope(raw)) {
+        return NextResponse.json(expiredPlaintextResponse());
+      }
       return NextResponse.json(opaqueResponse());
     }
     sessionKey = decrypted.sessionKey;
@@ -77,6 +89,8 @@ export async function POST(req: NextRequest) {
     const nonce = strField(body.nonce);
     const timestamp = numField(body.timestamp);
     const softwareName = strField(body.softwareName);
+    const version = strField(body.version);
+    const versionCode = numField(body.versionCode);
 
     if (hwid) {
       const hwBlacklistCheck = await isBlacklisted(ipAddress, hwid);
@@ -191,20 +205,38 @@ export async function POST(req: NextRequest) {
     const boundSoftware = await prisma.software.findUnique({
       where: { name: softwareName },
     });
-    if (boundSoftware && !boundSoftware.enabled) {
-      await logVerificationAttempt({
-        ipAddress,
-        licenseKey,
-        softwareName,
-        hwid,
-        deviceName,
-        success: false,
-        reason: 'software_disabled',
-      });
-      return enc({
-        error: 'Software is disabled',
-        message: `所属软件「${softwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
-      });
+    if (boundSoftware) {
+      const versionCheck = checkSoftwareVersionAllowed(versionCode, boundSoftware);
+      if (!versionCheck.allowed) {
+        await logVerificationAttempt({
+          ipAddress,
+          licenseKey,
+          softwareName,
+          hwid,
+          deviceName,
+          success: false,
+          reason: versionCheck.reason || 'version_expired',
+        });
+
+        const latestVer = await prisma.softwareVersion.findFirst({
+          where: { softwareName, enabled: true },
+          orderBy: { versionCode: 'desc' },
+        });
+
+        return enc({
+          error: versionCheck.reason === 'software_disabled' ? 'Software is disabled' : 'Version expired',
+          code: versionCheck.reason === 'software_disabled' ? 'SOFTWARE_DISABLED' : 'VERSION_EXPIRED',
+          message: versionCheck.message,
+          latestVersion: latestVer
+            ? {
+                version: latestVer.version,
+                versionCode: latestVer.versionCode,
+                downloadUrl: latestVer.downloadUrl,
+                changelog: latestVer.changelog,
+              }
+            : null,
+        });
+      }
     }
 
     // 检查许可证是否被撤销
@@ -451,7 +483,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 组装授权数据并使用 Ed25519 私钥进行数字签名，最后整体加密（sign-then-encrypt）
+    const latestVer = await prisma.softwareVersion.findFirst({
+      where: { softwareName: isUniversalLicense ? softwareName : activeLicense.softwareName, enabled: true },
+      orderBy: { versionCode: 'desc' },
+    });
+
+    let hasUpdate = false;
+    if (latestVer && versionCode !== undefined) {
+      hasUpdate = latestVer.versionCode > versionCode;
+    }
+
     const signedResponse = signPayload({
       valid: true,
       licenseKey: activeLicense.licenseKey,
@@ -462,6 +503,15 @@ export async function POST(req: NextRequest) {
       status: activeLicense.status,
       sessionId: session.id,
       heartbeatInterval,
+      hasUpdate,
+      latestVersion: latestVer
+        ? {
+            version: latestVer.version,
+            versionCode: latestVer.versionCode,
+            downloadUrl: latestVer.downloadUrl,
+            changelog: latestVer.changelog,
+          }
+        : null,
       timestamp: Date.now(),
     });
 

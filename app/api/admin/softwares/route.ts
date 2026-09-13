@@ -60,6 +60,8 @@ export async function GET(req: NextRequest) {
           code: s.code,
           description: s.description,
           enabled: s.enabled,
+          minVersionCode: s.minVersionCode,
+          maxVersionCode: s.maxVersionCode,
           licenseCount,
           versionCount,
           createdAt: s.createdAt,
@@ -94,7 +96,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, code, description, enabled } = parseResult.data;
+    const { name, code, description, enabled, minVersionCode, maxVersionCode } = parseResult.data;
     const trimmedName = name.trim();
 
     // 检查名称唯一性
@@ -115,6 +117,8 @@ export async function POST(req: NextRequest) {
         code: code?.trim() || null,
         description: description?.trim() || null,
         enabled: enabled ?? true,
+        minVersionCode: minVersionCode ?? 0,
+        maxVersionCode: maxVersionCode ?? null,
       },
     });
 
