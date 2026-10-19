@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { signPayload } from '@/lib/crypto-sign';
+import { signPayload, getOrCreateKeyPair } from '@/lib/crypto-sign';
+import { sealPayload, encodeLicensePayload } from '@/lib/payload-seal';
 import prisma from '@/lib/prisma';
 import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
@@ -493,6 +494,31 @@ export async function POST(req: NextRequest) {
       hasUpdate = latestVer.versionCode > versionCode;
     }
 
+    // 授权载荷：客户端凭此获得功能密钥材料与时效边界。
+    // 载荷经 Ed25519 签名并以卡密与 HWID 共同派生密钥封装，客户端无法自行构造，
+    // 也无法通过替换字段绕过时效判断。旧客户端忽略该字段，不影响兼容。
+    //
+    // HWID 参与派生使载荷只对签发时的设备可用。未启用绑定的授权允许空 HWID，
+    // 此时载荷与设备无关，与原有行为一致。
+    const { privateKey } = getOrCreateKeyPair();
+    const featureMask = 0xFFFFFFFF;
+    const expiresAtMs = activeLicense.expirationDate
+      ? activeLicense.expirationDate.getTime()
+      : 0;
+    const bindingMachineId = hwid || activeLicense.licenseKey;
+
+    const sealed = sealPayload(
+      encodeLicensePayload({
+        issuedAt: Date.now(),
+        expiresAt: expiresAtMs,
+        featureMask,
+        reserved: 0,
+      }),
+      activeLicense.licenseKey,
+      bindingMachineId,
+      privateKey
+    );
+
     const signedResponse = signPayload({
       valid: true,
       licenseKey: activeLicense.licenseKey,
@@ -504,6 +530,7 @@ export async function POST(req: NextRequest) {
       sessionId: session.id,
       heartbeatInterval,
       hasUpdate,
+      payload: sealed,
       latestVersion: latestVer
         ? {
             version: latestVer.version,
