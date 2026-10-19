@@ -55,14 +55,18 @@ interface VeilRequest {
  * 多少」这个格式事实，不是「观测内容是什么」。攻击者把长度改大或改小，
  * 只会让两侧派生出不同的密钥，解不开。
  *
+ * 登记进本表的布局必须满足零基线：正常环境下客户端的观测逐字节为零。
+ * 模块拓扑与证书指纹不满足这一点——前者随安装目录与加载顺序变化，
+ * 后者在走 TLS 时必然是真实摘要——因此两者都不在任何已登记布局里。
+ *
  * 新增布局时在此登记。客户端与服务端必须同时发布，否则旧客户端会
  * 因为布局 ID 未登记而被拒。
  */
 const EVIDENCE_LAYOUTS: Record<string, { size: number; description: string }> = {
-  // AntiDebugSnapshot 16 + ModuleTopology 20 + CertificatePin 32
-  '1': { size: 68, description: 'anti-debug, module topology, certificate pin' },
-  // AntiDebugSnapshot 16 + ModuleTopology 20 + CertificatePin 32 + CodeIntegrity 260
-  '2': { size: 328, description: 'layout 1 plus code integrity deltas' },
+  // AntiDebugSnapshot 16
+  '1': { size: 16, description: 'anti-debug counters' },
+  // AntiDebugSnapshot 16 + CodeIntegrity 260
+  '2': { size: 276, description: 'layout 1 plus code integrity deltas' },
 };
 
 /** 客户端未声明布局时的默认值，对应 veil 的出厂标准布局 */
