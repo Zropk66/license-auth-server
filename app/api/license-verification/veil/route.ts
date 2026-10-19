@@ -37,17 +37,36 @@ interface VeilRequest {
   version?: unknown;
   versionCode?: unknown;
   evidence?: unknown;
+  /**
+   * 证据布局标识。客户端据此声明它用的 provider 组合，服务端按登记表
+   * 取对应的零基线长度。省略时取默认布局。
+   */
+  evidenceLayout?: unknown;
 }
 
 /**
- * 服务端期望的证据长度。
+ * 证据布局注册表。
  *
- * 必须与客户端装配时的 provider 组合一致。veil 的默认布局是
- * AntiDebugSnapshot 16 字节 + ModuleTopology 20 字节 + CertificatePin
- * 32 字节，共 68 字节。客户端改动 provider 顺序或增删 provider 后，
- * 服务端必须同步，否则全部客户端派生分叉。
+ * 布局长度是协议的一部分，不是服务端配置。客户端声明它用的是哪套布局，
+ * 服务端按登记表取对应的零基线长度。未登记的布局直接拒绝——服务端
+ * 只承认自己知道的那几套。
+ *
+ * 为什么允许客户端声明长度而不算「采信客户端」：服务端信的是「长度是
+ * 多少」这个格式事实，不是「观测内容是什么」。攻击者把长度改大或改小，
+ * 只会让两侧派生出不同的密钥，解不开。
+ *
+ * 新增布局时在此登记。客户端与服务端必须同时发布，否则旧客户端会
+ * 因为布局 ID 未登记而被拒。
  */
-const VEIL_EVIDENCE_SIZE = 68;
+const EVIDENCE_LAYOUTS: Record<string, { size: number; description: string }> = {
+  // AntiDebugSnapshot 16 + ModuleTopology 20 + CertificatePin 32
+  '1': { size: 68, description: 'anti-debug, module topology, certificate pin' },
+  // AntiDebugSnapshot 16 + ModuleTopology 20 + CertificatePin 32 + CodeIntegrity 260
+  '2': { size: 328, description: 'layout 1 plus code integrity deltas' },
+};
+
+/** 客户端未声明布局时的默认值，对应 veil 的出厂标准布局 */
+const DEFAULT_LAYOUT_ID = '1';
 
 /**
  * 证据不参与服务端派生。
@@ -76,12 +95,26 @@ function decodeReportedEvidence(value: unknown): Buffer | null {
 /**
  * 构造服务端侧的派生输入。
  *
- * 全零，长度与客户端默认证据布局一致。客户端若启用了其他 provider
- * 组合，其证据长度不同，派生出的是另一把密钥——这是设计意图：服务端
- * 只认自己登记过的那套布局。
+ * 全零，长度取自登记表。客户端启用未登记的布局时无法对接——这是有意
+ * 的：服务端只认自己知道的那几套，避免长度随意变化导致两侧静默分叉。
  */
-function serverEvidence(): Buffer {
-  return Buffer.alloc(VEIL_EVIDENCE_SIZE);
+function serverEvidence(layoutId: string): Buffer | null {
+  const layout = EVIDENCE_LAYOUTS[layoutId];
+  if (!layout) return null;
+  return Buffer.alloc(layout.size);
+}
+
+/**
+ * 解析客户端声明的布局标识。
+ *
+ * 缺失时取默认值，与 veil 的出厂标准布局一致。非字符串或未登记一律
+ * 视为无效，由调用方拒绝。
+ */
+function resolveLayoutId(value: unknown): string | null {
+  if (value === undefined || value === null) return DEFAULT_LAYOUT_ID;
+  if (typeof value !== 'string') return null;
+  if (!Object.prototype.hasOwnProperty.call(EVIDENCE_LAYOUTS, value)) return null;
+  return value;
 }
 
 function strField(v: unknown): string | undefined {
@@ -139,8 +172,7 @@ export async function POST(req: NextRequest) {
     const versionCode = numField(body.versionCode);
 
     // 上报的证据只用于记录，不进派生。格式非法即拒绝，那属于请求
-    // 格式错误。长度不符同样拒绝：客户端启用了与服务端不同的 provider
-    // 组合，两侧布局对不上，继续派生只会产出一把双方都无法使用的密钥。
+    // 格式错误。
     const reportedEvidence = decodeReportedEvidence(body.evidence);
     if (reportedEvidence === null) {
       await logVerificationAttempt({
@@ -151,8 +183,23 @@ export async function POST(req: NextRequest) {
       });
       return failure('BAD_REQUEST', '请求格式无效。');
     }
+
+    // 布局标识决定服务端的零基线长度。未登记的布局无法对接，直接拒绝。
+    const layoutId = resolveLayoutId(body.evidenceLayout);
+    if (layoutId === null) {
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey: licenseKey ?? null,
+        success: false,
+        reason: 'unknown_evidence_layout',
+      });
+      return failure('BAD_REQUEST', '请求格式无效。');
+    }
+
+    // 上报长度必须与声明布局一致。不一致说明客户端装配与服务端认知
+    // 不同步，继续派生只会产出一把双方都无法使用的密钥。
     if (reportedEvidence.length !== 0 &&
-        reportedEvidence.length !== VEIL_EVIDENCE_SIZE) {
+        reportedEvidence.length !== EVIDENCE_LAYOUTS[layoutId].size) {
       await logVerificationAttempt({
         ipAddress,
         licenseKey: licenseKey ?? null,
@@ -164,7 +211,10 @@ export async function POST(req: NextRequest) {
 
     // 服务端侧的派生输入。正常环境的观测全为零，因此期望值是零缓冲。
     // 客户端把实测值发来只说明它测到了什么，不代表服务端的期望。
-    const evidence = serverEvidence();
+    const evidence = serverEvidence(layoutId);
+    if (evidence === null) {
+      return failure('BAD_REQUEST', '请求格式无效。');
+    }
 
     if (hwid) {
       const hwCheck = await isBlacklisted(ipAddress, hwid);
