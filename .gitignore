@@ -38,7 +38,8 @@ next-env.d.ts
 package-lock.json
 
 # test-client
-/test-client/
+/test-client/*
+!/test-client/client.mjs
 
 # C++ 客户端构建产物
 clients/cpp/*.exe
