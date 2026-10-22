@@ -3,6 +3,13 @@ const nextConfig = {
   output: 'standalone',
   poweredByHeader: false,
   images: { unoptimized: true },
+  logging: {
+    incomingRequests: {
+      ignore: [
+        /^\/api\/license-verification\/heartbeat/,
+      ],
+    },
+  },
   async headers() {
     return [
       {

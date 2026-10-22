@@ -81,23 +81,29 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 检查软件标识是否匹配（若客户端提供了 softwareName）
-    if (softwareName && license.softwareName !== softwareName) {
+    const isUniversalLicense =
+      license.softwareName === 'ALL' ||
+      license.softwareName === '*' ||
+      license.softwareName.trim().toUpperCase() === 'ALL';
+
+    if (softwareName && !isUniversalLicense && license.softwareName !== softwareName) {
       return enc({
         error: 'Software name mismatch',
         message: `许可证软件不匹配：该授权仅适用于「${license.softwareName}」。`,
       });
     }
 
-    // 检查所属软件是否处于启用状态
-    const boundSoftware = await prisma.software.findUnique({
-      where: { name: license.softwareName },
-    });
-    if (boundSoftware && !boundSoftware.enabled) {
-      return enc({
-        error: 'Software is disabled',
-        message: `所属软件「${license.softwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
+    const targetSoftwareName = isUniversalLicense ? (softwareName || '') : license.softwareName;
+    if (targetSoftwareName) {
+      const boundSoftware = await prisma.software.findUnique({
+        where: { name: targetSoftwareName },
       });
+      if (boundSoftware && !boundSoftware.enabled) {
+        return enc({
+          error: 'Software is disabled',
+          message: `所属软件「${targetSoftwareName}」已被管理员停用，该软件下所有授权暂不可用。`,
+        });
+      }
     }
 
     if (license.status === 'revoked') {

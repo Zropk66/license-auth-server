@@ -186,7 +186,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const isUniversalLicense = license.softwareName === 'ALL' || license.softwareName === '*';
+    const isUniversalLicense =
+      license.softwareName === 'ALL' ||
+      license.softwareName === '*' ||
+      license.softwareName.trim().toUpperCase() === 'ALL';
     if (!isUniversalLicense && license.softwareName !== softwareName) {
       await logVerificationAttempt({
         ipAddress,

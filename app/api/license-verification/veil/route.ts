@@ -295,7 +295,10 @@ export async function POST(req: NextRequest) {
       return failure('INVALID', '许可证不存在或无效。');
     }
 
-    const isUniversal = license.softwareName === 'ALL' || license.softwareName === '*';
+    const isUniversal =
+      license.softwareName === 'ALL' ||
+      license.softwareName === '*' ||
+      license.softwareName.trim().toUpperCase() === 'ALL';
     if (!isUniversal && license.softwareName !== softwareName) {
       await logVerificationAttempt({
         ipAddress,
@@ -480,7 +483,7 @@ export async function POST(req: NextRequest) {
     await logVerificationAttempt({
       ipAddress,
       licenseKey,
-      softwareName: activeLicense.softwareName,
+      softwareName: isUniversal ? softwareName : activeLicense.softwareName,
       hwid,
       deviceName,
       success: true,

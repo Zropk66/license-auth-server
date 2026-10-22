@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       where: {
         id: sessionId || undefined,
         licenseKey,
-        hwid: hwid || null,
+        ...(hwid ? { hwid } : {}),
         status: 'active',
       },
     });
