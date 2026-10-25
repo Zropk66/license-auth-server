@@ -1,5 +1,7 @@
 services:
   app:
+    image: ghcr.io/zropk66/license-auth-server:latest
+    # 需要本地改代码构建时改用: docker compose up -d --build
     build:
       context: .
       dockerfile: Dockerfile
@@ -35,17 +37,17 @@ services:
         max-file: "3"
 
   migration:
+    image: ghcr.io/zropk66/license-auth-server:migrator
     build:
       context: .
       dockerfile: Dockerfile
-      target: builder
+      target: migrator
     env_file: .env
     environment:
-      # 覆盖 DATABASE_URL，指向 Docker 内部 db 服务
       - DATABASE_URL=postgresql://${POSTGRES_USER:-license_auth}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-license_auth}?schema=public
-    # 不带 --accept-data-loss：破坏性变更会失败退出，交由人工确认后处理，
-    # 避免重构字段时静默清空已有授权与设备绑定
-    command: npx prisma db push
+    # 全新库直接 deploy 即可。老库由历史 db push 建立、没有迁移记录，
+    # init 会因表已存在而失败，此时补记基线后再 deploy，避免重建已有数据
+    command: ["sh", "-c", "npx prisma migrate deploy || { npx prisma migrate resolve --applied 20261026000000_init && npx prisma migrate deploy; }"]
     depends_on:
       db:
         condition: service_healthy

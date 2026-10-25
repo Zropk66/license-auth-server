@@ -22,6 +22,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV TZ=Asia/Shanghai
 RUN npm run build
 
+# 迁移器：仅需 prisma CLI 与 schema，独立成层供 compose 在启动前应用迁移。
+# deps 阶段已装齐依赖，不必再拉一次
+FROM deps AS migrator
+CMD ["npx", "prisma", "migrate", "deploy"]
+
 # 阶段 3：运行时镜像
 FROM node:20-slim AS runner
 RUN apt-get update && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/*

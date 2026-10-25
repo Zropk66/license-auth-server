@@ -44,7 +44,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Build and push Docker image
+      - name: Build and push app image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -54,6 +54,18 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # compose 的 migration 服务拉同一仓库的 migrator 标签，缺了它升级会拉取失败
+      - name: Build and push migrator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrator
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:migrator
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-migrator
+          cache-from: type=gha
 
   create-release:
     runs-on: ubuntu-latest
