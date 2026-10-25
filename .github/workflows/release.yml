@@ -10,8 +10,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -22,6 +20,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # ghcr 仓库名必须全小写，github.repository 会保留账号原始大小写
+      - name: Normalize image name
+        id: img
+        run: |
+          LOWERCASE=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
+          echo "name=${LOWERCASE}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -37,7 +42,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.img.outputs.name }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -63,8 +68,7 @@ jobs:
           target: migrator
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:migrator
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-migrator
+            ${{ env.REGISTRY }}/${{ steps.img.outputs.name }}:migrator
           cache-from: type=gha
 
   create-release:
