@@ -13,6 +13,11 @@ import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
 import { validateNonce } from '@/lib/nonce';
 import { logVerificationAttempt } from '@/lib/verification-logger';
 import { checkSoftwareVersionAllowed } from '@/lib/secure-protocol';
+import {
+  decryptEnvelope,
+  encryptResponse,
+  opaqueResponse,
+} from '@/lib/secure-protocol';
 import { getEffectiveHeartbeatInterval } from '@/lib/heartbeat';
 import { isBogusHwid, isBogusHwidBlockEnabled, checkLicenseRisk, recordLicenseFailure, recordLicenseSuccess } from '@/lib/risk-control';
 
@@ -139,13 +144,29 @@ function numField(v: unknown): number | undefined {
 /**
  * 失败一律返回 HTTP 200 与统一外形，不区分失败原因。
  * 探测者无法据此判断「卡密不存在」与「软件不匹配」的差别。
+ *
+ * 报文已加密时错误也必须加密，否则明密文混合本身就成了区分信号。
  */
-function failure(code: string, message: string, status = 200) {
+function failure(code: string, message: string, status = 200, sessionKey?: Buffer | null) {
+  if (sessionKey) {
+    return NextResponse.json(encryptResponse(sessionKey, { success: false, code, message }), { status });
+  }
   return NextResponse.json({ success: false, code, message }, { status });
 }
 
 export async function POST(req: NextRequest) {
   const ipAddress = getClientIP(req);
+  let sessionKey: Buffer | null = null;
+
+  /** 有会话密钥时统一加密，保证成功与失败响应外形一致 */
+  const reply = (payload: unknown) =>
+    sessionKey
+      ? NextResponse.json(encryptResponse(sessionKey, payload))
+      : NextResponse.json(payload);
+
+  /** 同一路由内三条失败路径都要按当前报文形态回包 */
+  const fail = (code: string, message: string, status = 200) =>
+    failure(code, message, status, sessionKey);
 
   try {
     const ipCheck = await isBlacklisted(ipAddress);
@@ -155,7 +176,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'ip_blacklisted',
       });
-      return failure('DENIED', '请求被拒绝。');
+      return fail('DENIED', '请求被拒绝。');
     }
 
     const limit = await checkVerifyRateLimit(ipAddress);
@@ -166,12 +187,34 @@ export async function POST(req: NextRequest) {
         reason: 'rate_limited',
       });
       recordSuspiciousActivity(ipAddress, 'rate_limit');
-      return failure('RATE_LIMITED', '请求过于频繁，请稍后再试。');
+      return fail('RATE_LIMITED', '请求过于频繁，请稍后再试。');
     }
 
-    const body = (await req.json().catch(() => null)) as VeilRequest | null;
+    const raw = await req.json().catch(() => null);
+
+    // v2 信封与明文并存：存量客户端仍发明文 JSON，新客户端发加密信封。
+    // 信封解不开时返回乱文，不泄露是密钥错还是内容错
+    let body: VeilRequest | null = null;
+    const looksEncrypted =
+      raw !== null &&
+      typeof raw === 'object' &&
+      (raw as Record<string, unknown>).v === 2 &&
+      typeof (raw as Record<string, unknown>).envelope === 'string' &&
+      typeof (raw as Record<string, unknown>).payload === 'string';
+
+    if (looksEncrypted) {
+      const decrypted = decryptEnvelope(raw);
+      if (!decrypted) {
+        return NextResponse.json(opaqueResponse());
+      }
+      sessionKey = decrypted.sessionKey;
+      body = decrypted.body as VeilRequest;
+    } else if (raw && typeof raw === 'object') {
+      body = raw as VeilRequest;
+    }
+
     if (!body || typeof body !== 'object') {
-      return failure('BAD_REQUEST', '请求格式无效。');
+      return fail('BAD_REQUEST', '请求格式无效。');
     }
 
     const licenseKey = strField(body.licenseKey);
@@ -191,7 +234,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'invalid_evidence',
       });
-      return failure('BAD_REQUEST', '请求格式无效。');
+      return fail('BAD_REQUEST', '请求格式无效。');
     }
 
     // 布局标识决定服务端的零基线长度。未登记的布局无法对接，直接拒绝。
@@ -203,7 +246,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'unknown_evidence_layout',
       });
-      return failure('BAD_REQUEST', '请求格式无效。');
+      return fail('BAD_REQUEST', '请求格式无效。');
     }
 
     // 上报长度必须与声明布局一致。不一致说明客户端装配与服务端认知
@@ -216,14 +259,14 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'evidence_layout_mismatch',
       });
-      return failure('BAD_REQUEST', '请求格式无效。');
+      return fail('BAD_REQUEST', '请求格式无效。');
     }
 
     // 服务端侧的派生输入。正常环境的观测全为零，因此期望值是零缓冲。
     // 客户端把实测值发来只说明它测到了什么，不代表服务端的期望。
     const evidence = serverEvidence(layoutId);
     if (evidence === null) {
-      return failure('BAD_REQUEST', '请求格式无效。');
+      return fail('BAD_REQUEST', '请求格式无效。');
     }
 
     if (hwid) {
@@ -238,7 +281,7 @@ export async function POST(req: NextRequest) {
           success: false,
           reason: 'hwid_blacklisted',
         });
-        return failure('DENIED', '请求被拒绝。');
+        return fail('DENIED', '请求被拒绝。');
       }
     }
 
@@ -253,7 +296,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'anti_replay_failed',
       });
-      return failure('REPLAY', '请求时效校验失败。');
+      return fail('REPLAY', '请求时效校验失败。');
     }
 
     if (!licenseKey) {
@@ -266,7 +309,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'missing_license_key',
       });
-      return failure('BAD_REQUEST', '缺少许可证标识。');
+      return fail('BAD_REQUEST', '缺少许可证标识。');
     }
 
     if (!softwareName) {
@@ -279,7 +322,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'missing_software_name',
       });
-      return failure('BAD_REQUEST', '缺少软件标识。');
+      return fail('BAD_REQUEST', '缺少软件标识。');
     }
 
     const hwidCheck = isBogusHwid(hwid);
@@ -293,7 +336,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'bogus_hwid',
       });
-      return failure('BAD_REQUEST', hwidCheck.reason || '设备标识异常。');
+      return fail('BAD_REQUEST', hwidCheck.reason || '设备标识异常。');
     }
 
     const riskCheck = await checkLicenseRisk(licenseKey);
@@ -307,7 +350,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'license_risk_locked',
       });
-      return failure('DENIED', riskCheck.reason || '该卡密因异常尝试已被安全锁定。');
+      return fail('DENIED', riskCheck.reason || '该卡密因异常尝试已被安全锁定。');
     }
 
     const license = await prisma.license.findUnique({
@@ -327,7 +370,7 @@ export async function POST(req: NextRequest) {
       });
       await recordLicenseFailure(licenseKey, ipAddress, 'invalid_license_key');
       recordSuspiciousActivity(ipAddress, 'bruteforce', hwid);
-      return failure('INVALID', '许可证不存在或无效。');
+      return fail('INVALID', '许可证不存在或无效。');
     }
 
     const isUniversal =
@@ -345,7 +388,7 @@ export async function POST(req: NextRequest) {
         reason: 'software_mismatch',
       });
       await recordLicenseFailure(licenseKey, ipAddress, 'software_mismatch');
-      return failure('MISMATCH', '许可证与软件不匹配。');
+      return fail('MISMATCH', '许可证与软件不匹配。');
     }
 
     const boundSoftware = await prisma.software.findUnique({
@@ -363,7 +406,7 @@ export async function POST(req: NextRequest) {
           success: false,
           reason: versionCheck.reason ?? 'version_expired',
         });
-        return failure(
+        return fail(
           versionCheck.reason === 'software_disabled' ? 'SOFTWARE_DISABLED' : 'VERSION_EXPIRED',
           versionCheck.message ?? '当前版本不可用。'
         );
@@ -380,7 +423,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'license_revoked',
       });
-      return failure('REVOKED', '许可证已被撤销。');
+      return fail('REVOKED', '许可证已被撤销。');
     }
 
     if (license.status === 'suspended') {
@@ -393,7 +436,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'license_suspended',
       });
-      return failure('SUSPENDED', '许可证已被暂停。');
+      return fail('SUSPENDED', '许可证已被暂停。');
     }
 
     let activeLicense = license;
@@ -435,7 +478,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'license_expired',
       });
-      return failure('EXPIRED', '许可证已过期。');
+      return fail('EXPIRED', '许可证已过期。');
     }
 
     // HWID 绑定。业务层仍按数据库状态判定：绑定检查、会话复用、
@@ -451,7 +494,7 @@ export async function POST(req: NextRequest) {
           success: false,
           reason: 'hwid_required',
         });
-        return failure('HWID_REQUIRED', '此许可证启用设备绑定，未提供设备标识。');
+        return fail('HWID_REQUIRED', '此许可证启用设备绑定，未提供设备标识。');
       }
 
       if (!activeLicense.hwid) {
@@ -471,7 +514,7 @@ export async function POST(req: NextRequest) {
           reason: 'hwid_mismatch',
         });
         await recordLicenseFailure(licenseKey, ipAddress, 'hwid_mismatch');
-        return failure('HWID_MISMATCH', '许可证已在另一台设备上绑定。');
+        return fail('HWID_MISMATCH', '许可证已在另一台设备上绑定。');
       }
     }
 
@@ -618,12 +661,13 @@ export async function POST(req: NextRequest) {
 
     if (!roundTrip || !roundTrip.equals(payload)) {
       console.error('[VeilEnvelope] self check failed for license', licenseKey);
-      return failure('INTERNAL', '签发自校验失败。', 500);
+      return fail('INTERNAL', '签发自校验失败。', 500);
     }
 
     // 响应体整体签名。明文字段不受信封保护，客户端必须凭此验签后才能
     // 采信 success、status、expirationDate，否则改包即可伪造授权结果。
-    return NextResponse.json(signPayload({
+    // 报文已加密时签名在密文内部，外层再裹 AES-GCM。
+    return reply(signPayload({
       success: true,
       licenseKey: activeLicense.licenseKey,
       username: activeLicense.user.username,
@@ -657,6 +701,6 @@ export async function POST(req: NextRequest) {
       console.error('Failed to log veil verification attempt:', logErr);
     }
 
-    return failure('INTERNAL', '服务器内部错误，请稍后再试。', 500);
+    return fail('INTERNAL', '服务器内部错误，请稍后再试。', 500);
   }
 }

@@ -27,6 +27,7 @@ jobs:
         run: |
           LOWERCASE=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')
           echo "name=${LOWERCASE}" >> "$GITHUB_OUTPUT"
+          echo "sha_short=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,6 +46,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ steps.img.outputs.name }}
           tags: |
             type=ref,event=branch
+            type=sha,prefix=sha-,format=short
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
@@ -60,7 +62,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # compose 的 migration 服务拉同一仓库的 migrator 标签，缺了它升级会拉取失败
+      # compose 的 migration 服务拉同一仓库的 migrator 标签，缺了它升级会拉取失败。
+      # 同时按 sha 打标签，回滚时 schema 与应用才能锁在同一版本
       - name: Build and push migrator image
         uses: docker/build-push-action@v6
         with:
@@ -69,6 +72,7 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ steps.img.outputs.name }}:migrator
+            ${{ env.REGISTRY }}/${{ steps.img.outputs.name }}:migrator-sha-${{ steps.img.outputs.sha_short }}
           cache-from: type=gha
 
   create-release:

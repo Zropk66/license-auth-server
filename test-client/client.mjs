@@ -210,6 +210,55 @@ export function createVeilRequest(options) {
   };
 }
 
+/**
+ * 把 veil 请求体封装成 v2 信封。
+ *
+ * 与明文版请求体内容完全一致，只是外面套了 RSA-OAEP 包裹的会话密钥
+ * 与 AES-GCM 密文，避免卡密与 HWID 出现在任何代理或边缘日志里。
+ */
+export function sealVeilRequest(plainBody, rsaPublicKeyPem) {
+  const sessionKey = crypto.randomBytes(32);
+  const encryptedSessionKey = crypto.publicEncrypt({
+    key: rsaPublicKeyPem,
+    padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+    oaepHash: 'sha256',
+  }, sessionKey);
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', sessionKey, iv);
+  const ct = Buffer.concat([
+    cipher.update(Buffer.from(JSON.stringify(plainBody), 'utf8')),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+
+  return {
+    wire: {
+      v: 2,
+      envelope: encryptedSessionKey.toString('base64'),
+      payload: `${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`,
+    },
+    sessionKey,
+  };
+}
+
+/** 解开 v2 信封响应，返回其中已签名的业务对象 */
+export function openSealedVeilResponse(wirePayload, sessionKey) {
+  const parts = wirePayload.split(':');
+  if (parts.length !== 3) {
+    throw new Error('veil 加密响应格式无效');
+  }
+
+  const iv = Buffer.from(parts[0], 'hex');
+  const tag = Buffer.from(parts[1], 'hex');
+  const ct = Buffer.from(parts[2], 'hex');
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', sessionKey, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(ct), decipher.final()]);
+  return JSON.parse(decrypted.toString('utf8'));
+}
+
 export function openVeilResponse(envelope, authPublicKeyPem, cardKey, hwid, evidence, domain = DEFAULT_DOMAIN) {
   try {
     const nonce = Buffer.from(envelope.nonceHex, 'hex');
@@ -460,17 +509,31 @@ export class LicenseClient {
       });
 
       let resp;
+      let veilSessionKey = null;
       try {
+        // 配置了 RSA 公钥就走加密通道，否则退回明文，兼容旧服务端
+        const wireBody = this.rsaPublicKey
+          ? (() => {
+              const sealed = sealVeilRequest(veilReq, this.rsaPublicKey);
+              veilSessionKey = sealed.sessionKey;
+              return sealed.wire;
+            })()
+          : veilReq;
+
         resp = await fetch(`${this.baseUrl}/api/license-verification/veil`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(veilReq),
+          body: JSON.stringify(wireBody),
         });
       } catch (netErr) {
         throw new Error(`连接服务器失败 [${this.baseUrl}]: ${netErr.message}`);
       }
 
-      const respJson = await resp.json();
+      let respJson = await resp.json();
+      if (veilSessionKey && typeof respJson?.payload === 'string') {
+        respJson = openSealedVeilResponse(respJson.payload, veilSessionKey);
+      }
+
       // 成功响应外层是 { data, signature }，失败响应仍是扁平的 { success:false, code }
       const body = respJson.data || respJson;
 
