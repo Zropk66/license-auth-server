@@ -20,7 +20,8 @@ services:
         condition: service_completed_successfully
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
+      # 根路径被 middleware 拦成 403，探针须打公开接口才会真正反映存活状态
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/settings/public || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -45,8 +46,8 @@ services:
     env_file: .env
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-license_auth}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-license_auth}?schema=public
-    # 全新库直接 deploy 即可。老库由历史 db push 建立、没有迁移记录，
-    # init 会因表已存在而失败，此时补记基线后再 deploy，避免重建已有数据
+    # 基线 migration 与线上既有结构一致，老库标记基线后只需执行增量迁移。
+    # deploy 失败说明库结构与基线不符，此时不应强行标记，交由人工核对
     command: ["sh", "-c", "npx prisma migrate deploy || { npx prisma migrate resolve --applied 20261026000000_init && npx prisma migrate deploy; }"]
     depends_on:
       db:

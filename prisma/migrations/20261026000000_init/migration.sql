@@ -31,7 +31,6 @@ CREATE TABLE "Software" (
     "enabled" BOOLEAN NOT NULL DEFAULT true,
     "minVersionCode" INTEGER DEFAULT 0,
     "maxVersionCode" INTEGER,
-    "customPayload" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -52,7 +51,6 @@ CREATE TABLE "License" (
     "status" TEXT NOT NULL DEFAULT 'active',
     "licenseType" TEXT NOT NULL DEFAULT 'fixed',
     "duration" INTEGER,
-    "customPayload" TEXT,
     "activatedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -106,7 +104,6 @@ CREATE TABLE "SoftwareVersion" (
     "fileHash" TEXT,
     "isForced" BOOLEAN NOT NULL DEFAULT false,
     "enabled" BOOLEAN NOT NULL DEFAULT true,
-    "customPayload" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
