@@ -141,34 +141,23 @@ function numField(v: unknown): number | undefined {
   return typeof v === 'number' ? v : undefined;
 }
 
-/**
- * 失败一律返回 HTTP 200 与统一外形，不区分失败原因。
- * 探测者无法据此判断「卡密不存在」与「软件不匹配」的差别。
- *
- * 报文已加密时错误也必须加密，否则明密文混合本身就成了区分信号。
- */
-function failure(code: string, message: string, status = 200, sessionKey?: Buffer | null) {
-  if (sessionKey) {
-    return NextResponse.json(encryptResponse(sessionKey, { success: false, code, message }), { status });
-  }
-  return NextResponse.json({ success: false, code, message }, { status });
-}
-
 export async function POST(req: NextRequest) {
   const ipAddress = getClientIP(req);
   let sessionKey: Buffer | null = null;
 
-  /** 有会话密钥时统一加密，保证成功与失败响应外形一致 */
+  /** 解密成功后的全部响应都用该请求的会话密钥加密 */
   const reply = (payload: unknown) =>
-    sessionKey
-      ? NextResponse.json(encryptResponse(sessionKey, payload))
-      : NextResponse.json(payload);
+    NextResponse.json(encryptResponse(sessionKey as Buffer, payload));
 
-  /** 同一路由内三条失败路径都要按当前报文形态回包 */
+  /** 解密成功后的失败响应同样加密，外形与成功响应一致 */
   const fail = (code: string, message: string, status = 200) =>
-    failure(code, message, status, sessionKey);
+    NextResponse.json(
+      encryptResponse(sessionKey as Buffer, { success: false, code, message }),
+      { status }
+    );
 
   try {
+    // 解密前无会话密钥，无法加密回包，统一返回乱文，不泄露拦截原因
     const ipCheck = await isBlacklisted(ipAddress);
     if (ipCheck.blacklisted) {
       await logVerificationAttempt({
@@ -176,7 +165,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'ip_blacklisted',
       });
-      return fail('DENIED', '请求被拒绝。');
+      return NextResponse.json(opaqueResponse());
     }
 
     const limit = await checkVerifyRateLimit(ipAddress);
@@ -187,31 +176,24 @@ export async function POST(req: NextRequest) {
         reason: 'rate_limited',
       });
       recordSuspiciousActivity(ipAddress, 'rate_limit');
-      return fail('RATE_LIMITED', '请求过于频繁，请稍后再试。');
+      return NextResponse.json(opaqueResponse());
     }
 
     const raw = await req.json().catch(() => null);
 
-    // v2 信封与明文并存：存量客户端仍发明文 JSON，新客户端发加密信封。
-    // 信封解不开时返回乱文，不泄露是密钥错还是内容错
-    let body: VeilRequest | null = null;
-    const looksEncrypted =
-      raw !== null &&
-      typeof raw === 'object' &&
-      (raw as Record<string, unknown>).v === 2 &&
-      typeof (raw as Record<string, unknown>).envelope === 'string' &&
-      typeof (raw as Record<string, unknown>).payload === 'string';
-
-    if (looksEncrypted) {
-      const decrypted = decryptEnvelope(raw);
-      if (!decrypted) {
-        return NextResponse.json(opaqueResponse());
-      }
-      sessionKey = decrypted.sessionKey;
-      body = decrypted.body as VeilRequest;
-    } else if (raw && typeof raw === 'object') {
-      body = raw as VeilRequest;
+    // 端点强制加密：不接受明文 JSON。若保留明文回退，攻击者只要发一次
+    // 明文请求就能拿到明文错误响应，加密切换可被主动降级绕过
+    const decrypted = decryptEnvelope(raw);
+    if (!decrypted) {
+      await logVerificationAttempt({
+        ipAddress,
+        success: false,
+        reason: 'invalid_envelope',
+      });
+      return NextResponse.json(opaqueResponse());
     }
+    sessionKey = decrypted.sessionKey;
+    const body = decrypted.body as VeilRequest;
 
     if (!body || typeof body !== 'object') {
       return fail('BAD_REQUEST', '请求格式无效。');
@@ -701,6 +683,9 @@ export async function POST(req: NextRequest) {
       console.error('Failed to log veil verification attempt:', logErr);
     }
 
-    return fail('INTERNAL', '服务器内部错误，请稍后再试。', 500);
+    // 解密前抛错时没有会话密钥，只能返回乱文
+    return sessionKey
+      ? fail('INTERNAL', '服务器内部错误，请稍后再试。', 500)
+      : NextResponse.json(opaqueResponse());
   }
 }

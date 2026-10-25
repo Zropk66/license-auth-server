@@ -183,8 +183,24 @@ test('full veil round trip over HTTP with encryption and signature', async () =>
   }
 });
 
-test('revoked flag reaches the client inside the signed payload', async () => {
-  const { rsa, ed } = makeKeys();
+test('client refuses to call veil without an RSA key', async () => {
+  const client = new LicenseClient({
+    protocol: 'veil',
+    url: 'http://127.0.0.1:1',
+    licenseKey: 'CARD-PLAIN',
+    softwareName: 'Nicko',
+    hwid: 'HW-PLAIN',
+    silent: true,
+  });
+
+  client.rsaPublicKey = null;
+  await assert.rejects(
+    () => client.verify(),
+    /RSA 公钥/
+  );
+});
+
+test('revoked flag reaches the client inside the signed payload', async () => {  const { rsa, ed } = makeKeys();
 
   const payload = composeLicensePayload({
     issuedAt: Date.now(),

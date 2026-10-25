@@ -511,27 +511,28 @@ export class LicenseClient {
       let resp;
       let veilSessionKey = null;
       try {
-        // 配置了 RSA 公钥就走加密通道，否则退回明文，兼容旧服务端
-        const wireBody = this.rsaPublicKey
-          ? (() => {
-              const sealed = sealVeilRequest(veilReq, this.rsaPublicKey);
-              veilSessionKey = sealed.sessionKey;
-              return sealed.wire;
-            })()
-          : veilReq;
+        // veil 端点强制加密，未配置 RSA 公钥无法对接
+        if (!this.rsaPublicKey) {
+          throw new Error('未配置 RSA 公钥，veil 端点要求加密信封');
+        }
+        const sealed = sealVeilRequest(veilReq, this.rsaPublicKey);
+        veilSessionKey = sealed.sessionKey;
 
         resp = await fetch(`${this.baseUrl}/api/license-verification/veil`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(wireBody),
+          body: JSON.stringify(sealed.wire),
         });
       } catch (netErr) {
         throw new Error(`连接服务器失败 [${this.baseUrl}]: ${netErr.message}`);
       }
 
       let respJson = await resp.json();
-      if (veilSessionKey && typeof respJson?.payload === 'string') {
+      if (typeof respJson?.payload === 'string') {
         respJson = openSealedVeilResponse(respJson.payload, veilSessionKey);
+      } else {
+        // 无 payload 说明服务端返回的是乱文，请求被拒
+        throw new Error('veil 请求被服务端拒绝，未返回可解密响应');
       }
 
       // 成功响应外层是 { data, signature }，失败响应仍是扁平的 { success:false, code }
