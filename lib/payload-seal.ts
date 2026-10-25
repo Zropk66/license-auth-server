@@ -272,6 +272,49 @@ export function openPayload(
 }
 
 /**
+ * 授权状态位标志。
+ *
+ * 状态必须进签名覆盖范围，否则客户端只能从明文响应里读 status，
+ * 中间人或改过的客户端把 revoked 改成 active 就绕过了撤销。
+ */
+export const LICENSE_FLAG_ACTIVE = 1 << 0;
+export const LICENSE_FLAG_REVOKED = 1 << 1;
+export const LICENSE_FLAG_SUSPENDED = 1 << 2;
+export const LICENSE_FLAG_UNACTIVATED = 1 << 3;
+export const LICENSE_FLAG_HWID_BOUND = 1 << 4;
+
+/**
+ * 状态在载荷 JSON 里的保留键。
+ *
+ * 不改动 16 字节二进制头，历史客户端仍按原布局解析，只是多看到一个
+ * 未知 JSON 键并忽略；新客户端则从这里读取权威状态。
+ */
+export const LICENSE_FLAGS_KEY = '_flags';
+
+/** 按数据库状态字段换算位标志，未知状态按不可用处理 */
+export function encodeStatusFlags(status: string, hardwareBindingEnabled: boolean): number {
+  let flags = 0;
+  switch (status) {
+    case 'active':
+      flags |= LICENSE_FLAG_ACTIVE;
+      break;
+    case 'revoked':
+      flags |= LICENSE_FLAG_REVOKED;
+      break;
+    case 'suspended':
+      flags |= LICENSE_FLAG_SUSPENDED;
+      break;
+    case 'unactivated':
+      flags |= LICENSE_FLAG_UNACTIVATED;
+      break;
+    default:
+      break;
+  }
+  if (hardwareBindingEnabled) flags |= LICENSE_FLAG_HWID_BOUND;
+  return flags >>> 0;
+}
+
+/**
  * 载荷结构。客户端按同一布局解析，字段顺序与宽度必须一致，
  * 任何一侧改动都会导致解出的内容错位。
  *
@@ -294,6 +337,31 @@ export function encodeLicensePayload(payload: LicensePayload): Buffer {
   buffer.writeBigUInt64LE(BigInt(payload.issuedAt), 0);
   buffer.writeBigUInt64LE(BigInt(payload.expiresAt), 8);
   return buffer;
+}
+
+/**
+ * 把状态位并入自定义载荷 JSON。
+ *
+ * 载荷区整体处于签名与加密覆盖范围内，因此状态一旦写入便无法被客户端
+ * 或中间人改写。原有载荷不是对象时无法承载该键，改用对象包裹原值。
+ */
+export function attachStatusFlags(
+  customPayload: string | null | undefined,
+  flags: number
+): string {
+  if (!customPayload || !customPayload.trim()) {
+    return JSON.stringify({ [LICENSE_FLAGS_KEY]: flags });
+  }
+
+  try {
+    const parsed = JSON.parse(customPayload.trim());
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return JSON.stringify({ ...(parsed as Record<string, unknown>), [LICENSE_FLAGS_KEY]: flags });
+    }
+    return JSON.stringify({ value: parsed, [LICENSE_FLAGS_KEY]: flags });
+  } catch {
+    return JSON.stringify({ value: customPayload.trim(), [LICENSE_FLAGS_KEY]: flags });
+  }
 }
 
 export function composeLicensePayload(payload: LicensePayload): Buffer {

@@ -344,6 +344,7 @@ export class LicenseClient {
     this.unsealedPayload = null;
     this.customPayload = null;
     this.customJson = null;
+    this.statusFlags = null;
   }
 
   log(...args) {
@@ -471,38 +472,61 @@ export class LicenseClient {
 
       const respJson = await resp.json();
       if (!resp.ok || !respJson.success) {
-        this.log('veil 授权拒绝:', respJson.message || respJson.code || respJson);
-        return { data: respJson, error: respJson.error || 'veil_rejected' };
+        const failureBody = respJson.data || respJson;
+        this.log('veil 授权拒绝:', failureBody.message || failureBody.code || failureBody);
+        return { data: respJson, error: failureBody.error || 'veil_rejected' };
       }
 
-      this.sessionId = respJson.sessionId;
-      if (respJson.heartbeatInterval) {
-        this.heartbeatInterval = respJson.heartbeatInterval;
+      // 外层签名覆盖 success、status、expirationDate 等明文字段，
+      // 验签失败说明响应被改写，不能继续采信任何内容
+      const body = respJson.data || respJson;
+      if (respJson.signature && this.authPublicKey) {
+        const authenticated = crypto.verify(
+          null,
+          Buffer.from(JSON.stringify(body), 'utf8'),
+          crypto.createPublicKey(this.authPublicKey),
+          Buffer.from(respJson.signature, 'hex')
+        );
+        if (!authenticated) {
+          throw new Error('veil 响应外层签名校验失败');
+        }
+        this.log('  外层签名验证: 通过');
+      }
+
+      this.sessionId = body.sessionId;
+      if (body.heartbeatInterval) {
+        this.heartbeatInterval = body.heartbeatInterval;
       }
 
       this.log('veil 验证成功:');
-      this.log(`  用户: ${respJson.username}`);
-      this.log(`  状态: ${respJson.status}`);
-      this.log(`  过期时间: ${respJson.expirationDate || 'null (permanent)'}`);
-      this.log(`  会话标识: ${respJson.sessionId}`);
+      this.log(`  用户: ${body.username}`);
+      this.log(`  状态: ${body.status}`);
+      this.log(`  过期时间: ${body.expirationDate || 'null (permanent)'}`);
+      this.log(`  会话标识: ${body.sessionId}`);
 
-      const returnedSoftware = respJson.softwareName;
+      const returnedSoftware = body.softwareName;
       const isUniversal = returnedSoftware === 'ALL' || returnedSoftware === '*' || returnedSoftware?.toUpperCase() === 'ALL';
       if (!isUniversal && returnedSoftware !== this.softwareName) {
         this.log(`  软件匹配警告: 服务端标识为 ${returnedSoftware}，客户端请求为 ${this.softwareName}`);
       }
 
-      if (respJson.envelope && this.authPublicKey) {
+      if (body.envelope && this.authPublicKey) {
         const evidenceBuf = Buffer.from(veilReq.evidence, 'hex');
-        const unsealed = openVeilResponse(respJson.envelope, this.authPublicKey, this.licenseKey, this.hwid, evidenceBuf);
+        const unsealed = openVeilResponse(body.envelope, this.authPublicKey, this.licenseKey, this.hwid, evidenceBuf);
         if (unsealed) {
           this.unsealedPayload = unsealed;
           this.customPayload = unsealed.customPayload || null;
           this.customJson = unsealed.customJson || null;
+          this.statusFlags = typeof unsealed.customJson?._flags === 'number'
+            ? unsealed.customJson._flags
+            : null;
 
           this.log('  veil 信封解封成功:');
           this.log(`    签发时间戳: ${unsealed.issuedAt}`);
           this.log(`    到期时间戳: ${unsealed.expiresAt === 0 ? '0 (permanent)' : unsealed.expiresAt}`);
+          if (this.statusFlags !== null) {
+            this.log(`    授权状态位: 0x${this.statusFlags.toString(16)}`);
+          }
           if (this.customJson) {
             const keys = Object.keys(this.customJson);
             this.log(`    自定义载荷 JSON 对象 [共 ${keys.length} 项]:`);
@@ -521,7 +545,7 @@ export class LicenseClient {
           this.log('  veil 信封解封失败: 证据或公钥不匹配');
         }
       }
-      return { data: respJson };
+      return { data: body, signatureVerified: true };
     }
 
     throw new Error(`未知协议: ${this.protocol}`);

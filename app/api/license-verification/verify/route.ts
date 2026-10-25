@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signPayload, getOrCreateKeyPair } from '@/lib/crypto-sign';
-import { sealPayload, composeLicensePayload, mergeCustomPayloads } from '@/lib/payload-seal';
+import { sealPayload, composeLicensePayload, mergeCustomPayloads, encodeStatusFlags, attachStatusFlags } from '@/lib/payload-seal';
 import prisma from '@/lib/prisma';
 import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
@@ -561,11 +561,17 @@ export async function POST(req: NextRequest) {
       activeLicense.customPayload
     );
 
+    // 授权状态并入载荷，处于签名与加密覆盖范围内，客户端不必再信任明文 status
+    const statusFlags = encodeStatusFlags(
+      activeLicense.status,
+      activeLicense.hardwareBindingEnabled
+    );
+
     const sealed = sealPayload(
       composeLicensePayload({
         issuedAt: Date.now(),
         expiresAt: expiresAtMs,
-        customPayload: effectiveCustomPayload,
+        customPayload: attachStatusFlags(effectiveCustomPayload, statusFlags),
       }),
       activeLicense.licenseKey,
       bindingMachineId,

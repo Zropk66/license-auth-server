@@ -7,6 +7,13 @@ import {
   sealPayload,
   openPayload,
   mergeCustomPayloads,
+  encodeStatusFlags,
+  attachStatusFlags,
+  LICENSE_FLAG_ACTIVE,
+  LICENSE_FLAG_REVOKED,
+  LICENSE_FLAG_SUSPENDED,
+  LICENSE_FLAG_HWID_BOUND,
+  LICENSE_FLAGS_KEY,
 } from '../lib/payload-seal.ts';
 import {
   sealEnvelope,
@@ -145,4 +152,67 @@ test('client key stream matches server for payloads longer than 32 bytes', () =>
   assert.ok(opened);
   assert.equal(opened.customPayload, customJson);
   assert.deepEqual(opened.customJson, JSON.parse(customJson));
+});
+
+test('encodeStatusFlags maps license status to bit flags', () => {
+  assert.equal(encodeStatusFlags('active', false), LICENSE_FLAG_ACTIVE);
+  assert.equal(encodeStatusFlags('revoked', false), LICENSE_FLAG_REVOKED);
+  assert.equal(encodeStatusFlags('suspended', false), LICENSE_FLAG_SUSPENDED);
+  assert.equal(
+    encodeStatusFlags('active', true),
+    LICENSE_FLAG_ACTIVE | LICENSE_FLAG_HWID_BOUND
+  );
+  assert.equal(encodeStatusFlags('unknown_state', false), 0);
+});
+
+test('attachStatusFlags keeps payload object intact', () => {
+  const original = JSON.stringify({ vip: true, offsets: { tick: 288 } });
+  const withFlags = attachStatusFlags(original, LICENSE_FLAG_ACTIVE);
+  const parsed = JSON.parse(withFlags);
+
+  assert.equal(parsed.vip, true);
+  assert.equal(parsed[LICENSE_FLAGS_KEY], LICENSE_FLAG_ACTIVE);
+  assert.deepEqual(parsed.offsets, { tick: 288 });
+});
+
+test('attachStatusFlags preserves non-object payloads under value key', () => {
+  const arrayPayload = JSON.stringify(['aimbot', 'esp']);
+  const parsedArray = JSON.parse(attachStatusFlags(arrayPayload, LICENSE_FLAG_REVOKED));
+  assert.deepEqual(parsedArray.value, ['aimbot', 'esp']);
+  assert.equal(parsedArray[LICENSE_FLAGS_KEY], LICENSE_FLAG_REVOKED);
+
+  const plainText = 'not json at all';
+  const parsedText = JSON.parse(attachStatusFlags(plainText, LICENSE_FLAG_SUSPENDED));
+  assert.equal(parsedText.value, plainText);
+  assert.equal(parsedText[LICENSE_FLAGS_KEY], LICENSE_FLAG_SUSPENDED);
+});
+
+test('attachStatusFlags emits flags even without custom payload', () => {
+  const parsed = JSON.parse(attachStatusFlags(null, LICENSE_FLAG_ACTIVE));
+  assert.equal(parsed[LICENSE_FLAGS_KEY], LICENSE_FLAG_ACTIVE);
+  assert.equal(Object.keys(parsed).length, 1);
+});
+
+test('status flags survive envelope round trip', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519', {
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+  });
+
+  const flags = LICENSE_FLAG_ACTIVE | LICENSE_FLAG_HWID_BOUND;
+  const payload = composeLicensePayload({
+    issuedAt: Date.now(),
+    expiresAt: Date.now() + 60000,
+    customPayload: attachStatusFlags(JSON.stringify({ tier: 'pro' }), flags),
+  });
+
+  const sealed = sealPayload(payload, 'CARD-FLAGS', 'MACHINE-FLAGS', privateKey);
+  const opened = openPayload(sealed, 'CARD-FLAGS', 'MACHINE-FLAGS', privateKey);
+
+  assert.ok(opened);
+  const decoded = decodeLicensePayload(opened);
+  assert.ok(decoded);
+  const parsed = JSON.parse(decoded.customPayload);
+  assert.equal(parsed[LICENSE_FLAGS_KEY], flags);
+  assert.equal(parsed.tier, 'pro');
 });

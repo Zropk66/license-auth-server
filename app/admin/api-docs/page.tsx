@@ -835,8 +835,20 @@ func (c *LicenseClient) Verify(licenseKey, softwareName, hwid, deviceName string
               <ul className="list-disc list-inside space-y-1 text-muted-foreground font-mono">
                 <li>00 ~ 07 字节: issuedAt 8字节 uint64 LE 毫秒时间戳</li>
                 <li>08 ~ 15 字节: expiresAt 8字节 uint64 LE 毫秒时间戳，0 代表永久授权</li>
-                <li>16 字节之后: 自定义载荷 UTF-8 JSON 字符串，包含服务端合并下发的 sig 与 offset 字典</li>
+                <li>16 字节之后: 自定义载荷 UTF-8 JSON 字符串，含服务端合并下发的 sig 与 offset 字典</li>
               </ul>
+            </div>
+            <div className="p-3 bg-muted/30 border rounded-lg space-y-2 text-muted-foreground">
+              <span className="font-semibold text-foreground">授权状态位与响应签名：</span>
+              <p>载荷 JSON 内保留键 <code className="font-mono">_flags</code> 承载授权状态，处于签名与加密覆盖范围内，权威性高于明文 status：</p>
+              <ul className="list-disc list-inside space-y-1 font-mono">
+                <li>0x01: active 正常授权</li>
+                <li>0x02: revoked 已撤销</li>
+                <li>0x04: suspended 已冻结</li>
+                <li>0x08: unactivated 待激活</li>
+                <li>0x10: HWID 设备绑定已启用</li>
+              </ul>
+              <p className="pt-1">veil 端点响应体整体经 Ed25519 签名，返回 <code className="font-mono">{`{ data, signature }`}</code>。客户端必须验证签名后再采信 success、status、expirationDate 等明文字段。</p>
             </div>
             <div className="p-3 bg-muted/30 border rounded-lg space-y-1 text-muted-foreground">
               <span className="font-semibold text-foreground block">动态随机心跳机制：</span>

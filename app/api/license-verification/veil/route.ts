@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOrCreateKeyPair } from '@/lib/crypto-sign';
+import { getOrCreateKeyPair, signPayload } from '@/lib/crypto-sign';
 import { sealEnvelope, openEnvelope, MAX_EVIDENCE } from '@/lib/veil-envelope';
-import { composeLicensePayload, mergeCustomPayloads } from '@/lib/payload-seal';
+import {
+  composeLicensePayload,
+  mergeCustomPayloads,
+  encodeStatusFlags,
+  attachStatusFlags,
+} from '@/lib/payload-seal';
 import prisma from '@/lib/prisma';
 import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
@@ -578,10 +583,17 @@ export async function POST(req: NextRequest) {
       activeLicense.customPayload
     );
 
+    // 授权状态并入载荷，处于签名与加密覆盖范围内，客户端不必再信任明文 status
+    const statusFlags = encodeStatusFlags(
+      activeLicense.status,
+      activeLicense.hardwareBindingEnabled
+    );
+    const payloadWithFlags = attachStatusFlags(effectiveCustomPayload, statusFlags);
+
     const payload = composeLicensePayload({
       issuedAt: Date.now(),
       expiresAt: expiresAtMs,
-      customPayload: effectiveCustomPayload,
+      customPayload: payloadWithFlags,
     });
 
     const sealed = sealEnvelope(
@@ -609,7 +621,9 @@ export async function POST(req: NextRequest) {
       return failure('INTERNAL', '签发自校验失败。', 500);
     }
 
-    return NextResponse.json({
+    // 响应体整体签名。明文字段不受信封保护，客户端必须凭此验签后才能
+    // 采信 success、status、expirationDate，否则改包即可伪造授权结果。
+    return NextResponse.json(signPayload({
       success: true,
       licenseKey: activeLicense.licenseKey,
       username: activeLicense.user.username,
@@ -628,10 +642,10 @@ export async function POST(req: NextRequest) {
             changelog: latestVer.changelog,
           }
         : null,
-      // 客户端据此解出功能位与时效。其余字段仅供展示，不参与授权判定。
+      // 客户端据此解出功能位、状态与时效。其余字段仅供展示，不参与授权判定。
       envelope: sealed,
       timestamp: Date.now(),
-    });
+    }));
   } catch (error) {
     console.error('Veil verification error:', error);
 
