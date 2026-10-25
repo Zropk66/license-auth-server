@@ -11,12 +11,28 @@ export const BINDING_SIZE = 16;
 export const DEFAULT_DOMAIN = 0x01;
 
 export function decodeLicensePayload(buffer) {
-  if (!buffer || buffer.length !== 24) return null;
+  if (!buffer || buffer.length < 16) return null;
   const issuedAt = Number(buffer.readBigUInt64LE(0));
   const expiresAt = Number(buffer.readBigUInt64LE(8));
-  const featureMask = buffer.readUInt32LE(16);
-  const reserved = buffer.readUInt32LE(20);
-  return { issuedAt, expiresAt, featureMask, reserved };
+
+  let customPayload = null;
+  let customJson = null;
+  if (buffer.length > 16) {
+    customPayload = buffer.subarray(16).toString('utf8');
+    try {
+      customJson = JSON.parse(customPayload);
+    } catch {
+      customJson = null;
+    }
+  }
+
+  return {
+    issuedAt,
+    expiresAt,
+    customPayload,
+    customJson,
+    ...(customJson ? { dynamicData: customJson } : {}),
+  };
 }
 
 export function hkdfSha256(ikm, salt, info, length) {
@@ -39,18 +55,18 @@ export function hkdfSha256(ikm, salt, info, length) {
   return out;
 }
 
+export function deriveMachineKey(cardKey, nonce, machineId, domain, length) {
+  const info = Buffer.concat([Buffer.from(machineId, 'utf8'), Buffer.from([domain])]);
+  return hkdfSha256(Buffer.from(cardKey, 'utf8'), nonce, info, length);
+}
+
 export function deriveV2KeyStream(cardKey, nonce, machineId, length) {
-  const infoKey = Buffer.concat([Buffer.from(machineId, 'utf8'), Buffer.from([0x01])]);
-  const prk1 = crypto.createHmac('sha256', nonce).update(Buffer.from(cardKey, 'utf8')).digest();
-  const streamKey = crypto.createHmac('sha256', prk1).update(Buffer.concat([infoKey, Buffer.from([1])])).digest();
-  const prk2 = crypto.createHmac('sha256', nonce).update(streamKey).digest();
-  return crypto.createHmac('sha256', prk2).update(Buffer.from([1])).digest().subarray(0, length);
+  const streamKey = deriveMachineKey(cardKey, nonce, machineId, 0x01, 32);
+  return hkdfSha256(streamKey, nonce, Buffer.alloc(0), length);
 }
 
 export function computeV2Binding(cipher, nonce, cardKey, machineId) {
-  const infoBind = Buffer.concat([Buffer.from(machineId, 'utf8'), Buffer.from([0x02])]);
-  const prk = crypto.createHmac('sha256', nonce).update(Buffer.from(cardKey, 'utf8')).digest();
-  const bindKey = crypto.createHmac('sha256', prk).update(Buffer.concat([infoBind, Buffer.from([1])])).digest();
+  const bindKey = deriveMachineKey(cardKey, nonce, machineId, 0x02, 32);
   const digest = crypto
     .createHmac('sha256', bindKey)
     .update(Buffer.concat([nonce, cipher]))
@@ -324,6 +340,10 @@ export class LicenseClient {
     this.maxFailures = 3;
     this.isClosing = false;
     this.silent = Boolean(options.silent);
+
+    this.unsealedPayload = null;
+    this.customPayload = null;
+    this.customJson = null;
   }
 
   log(...args) {
@@ -402,10 +422,27 @@ export class LicenseClient {
       }
 
       if (decrypted.unsealedPayload) {
+        this.unsealedPayload = decrypted.unsealedPayload;
+        this.customPayload = decrypted.unsealedPayload.customPayload || null;
+        this.customJson = decrypted.unsealedPayload.customJson || null;
+
         this.log('  载荷解封成功:');
         this.log(`    签发时间戳: ${decrypted.unsealedPayload.issuedAt}`);
         this.log(`    到期时间戳: ${decrypted.unsealedPayload.expiresAt === 0 ? '0 (permanent)' : decrypted.unsealedPayload.expiresAt}`);
-        this.log(`    功能掩码: 0x${decrypted.unsealedPayload.featureMask.toString(16)}`);
+        if (this.customJson) {
+          const keys = Object.keys(this.customJson);
+          this.log(`    自定义载荷 JSON 对象 [共 ${keys.length} 项]:`);
+          for (const key of keys) {
+            const val = this.customJson[key];
+            if (typeof val === 'object' && val !== null) {
+              this.log(`      - ${key}:`, JSON.stringify(val));
+            } else {
+              this.log(`      - ${key}: ${val}`);
+            }
+          }
+        } else if (this.customPayload) {
+          this.log(`    自定义载荷: ${this.customPayload}`);
+        }
       }
       return decrypted;
     }
@@ -459,10 +496,27 @@ export class LicenseClient {
         const evidenceBuf = Buffer.from(veilReq.evidence, 'hex');
         const unsealed = openVeilResponse(respJson.envelope, this.authPublicKey, this.licenseKey, this.hwid, evidenceBuf);
         if (unsealed) {
+          this.unsealedPayload = unsealed;
+          this.customPayload = unsealed.customPayload || null;
+          this.customJson = unsealed.customJson || null;
+
           this.log('  veil 信封解封成功:');
           this.log(`    签发时间戳: ${unsealed.issuedAt}`);
           this.log(`    到期时间戳: ${unsealed.expiresAt === 0 ? '0 (permanent)' : unsealed.expiresAt}`);
-          this.log(`    功能掩码: 0x${unsealed.featureMask.toString(16)}`);
+          if (this.customJson) {
+            const keys = Object.keys(this.customJson);
+            this.log(`    自定义载荷 JSON 对象 [共 ${keys.length} 项]:`);
+            for (const key of keys) {
+              const val = this.customJson[key];
+              if (typeof val === 'object' && val !== null) {
+                this.log(`      - ${key}:`, JSON.stringify(val));
+              } else {
+                this.log(`      - ${key}: ${val}`);
+              }
+            }
+          } else if (this.customPayload) {
+            this.log(`    自定义载荷: ${this.customPayload}`);
+          }
         } else {
           this.log('  veil 信封解封失败: 证据或公钥不匹配');
         }
@@ -558,35 +612,58 @@ export class LicenseClient {
       throw new Error(`会话已非活跃状态: ${data.status}`);
     }
 
+    if (data.heartbeatInterval) {
+      this.heartbeatInterval = data.heartbeatInterval;
+    }
+
     this.consecutiveFailures = 0;
     return data;
   }
 
-  startHeartbeat() {
+  scheduleNextHeartbeat(delaySec) {
+    if (this.isClosing) return;
     this.stopHeartbeat();
-    const intervalMs = Math.max(5, this.heartbeatInterval) * 1000;
-    console.log(`启动心跳保持，周期: ${this.heartbeatInterval}s`);
+    const intervalSec = delaySec !== undefined ? Math.max(2, delaySec) : Math.max(5, this.heartbeatInterval);
+    const intervalMs = intervalSec * 1000;
 
-    this.heartbeatTimer = setInterval(async () => {
+    this.heartbeatTimer = setTimeout(async () => {
       if (this.isClosing) return;
       try {
         const data = await this.sendHeartbeat();
         const nowStr = new Date().toLocaleTimeString();
-        console.log(`[${nowStr}] 心跳正常 [${data?.sessionId?.slice(-8) || 'active'}]`);
+        console.log(`[${nowStr}] 心跳正常 [${data?.sessionId?.slice(-8) || 'active'}], 下次心跳: ${this.heartbeatInterval}s 后`);
+        this.scheduleNextHeartbeat();
       } catch (err) {
         this.consecutiveFailures += 1;
         console.error(`[心跳异常 ${this.consecutiveFailures}/${this.maxFailures}]: ${err.message}`);
         if (this.consecutiveFailures >= this.maxFailures) {
-          console.error('连续心跳失败达到上限，授权终止');
-          this.close();
+          console.log('心跳连续失败达到上限，尝试静默重新激活恢复会话...');
+          try {
+            await this.verify();
+            this.consecutiveFailures = 0;
+            console.log('静默重新激活成功，恢复心跳保持');
+            this.scheduleNextHeartbeat();
+            return;
+          } catch (reVerifyErr) {
+            console.error(`重新激活失败: ${reVerifyErr.message}，授权终止`);
+            this.close();
+            return;
+          }
         }
+        this.scheduleNextHeartbeat(5);
       }
     }, intervalMs);
   }
 
+  startHeartbeat() {
+    this.stopHeartbeat();
+    console.log(`启动动态心跳保持，首次周期: ${this.heartbeatInterval}s`);
+    this.scheduleNextHeartbeat();
+  }
+
   stopHeartbeat() {
     if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
+      clearTimeout(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
   }
@@ -644,6 +721,30 @@ export class LicenseClient {
     this.isClosing = true;
     this.stopHeartbeat();
     await this.reportOffline();
+  }
+
+  getCustomJson() {
+    return this.customJson;
+  }
+
+  getCustomPayload() {
+    return this.customPayload;
+  }
+
+  getOffset(name) {
+    if (!this.customJson) return null;
+    if (this.customJson.offsets && typeof this.customJson.offsets === 'object') {
+      return this.customJson.offsets[name] ?? null;
+    }
+    return this.customJson[name] ?? null;
+  }
+
+  getSig(name) {
+    if (!this.customJson) return null;
+    if (this.customJson.sigs && typeof this.customJson.sigs === 'object') {
+      return this.customJson.sigs[name] ?? null;
+    }
+    return this.customJson[name] ?? null;
   }
 
   async run(stayAlive = true) {

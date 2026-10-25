@@ -46,6 +46,7 @@ model Software {
   enabled        Boolean  @default(true)
   minVersionCode Int?     @default(0)
   maxVersionCode Int?
+  customPayload  String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -66,6 +67,7 @@ model License {
   status                 String    @default("active")
   licenseType            String    @default("fixed") // "fixed" or "duration"
   duration               Int?      // Duration in minutes
+  customPayload          String?
   activatedAt            DateTime?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
@@ -126,9 +128,10 @@ model SoftwareVersion {
   changelog    String
   downloadUrl  String
   fileHash     String?
-  isForced     Boolean  @default(false)
-  enabled      Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  isForced      Boolean  @default(false)
+  enabled       Boolean  @default(true)
+  customPayload String?
+  createdAt     DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([softwareName, versionCode])

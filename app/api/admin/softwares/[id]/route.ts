@@ -111,6 +111,9 @@ export async function PATCH(
     if (parseResult.data.maxVersionCode !== undefined) {
       updateData.maxVersionCode = parseResult.data.maxVersionCode;
     }
+    if (parseResult.data.customPayload !== undefined) {
+      updateData.customPayload = parseResult.data.customPayload ? parseResult.data.customPayload.trim() : null;
+    }
 
     const updated = await prisma.software.update({
       where: { id },

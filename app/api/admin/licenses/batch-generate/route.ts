@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       prefix,
       userId: requestedUserId,
       note,
+      customPayload,
     } = parseResult.data;
 
     /* 确定绑定的用户账号，未指定时自动关联或创建专属批量默认用户 */
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
       duration: isDuration ? duration! : null,
       activatedAt: isDuration ? null : now,
       note: note ? note.trim() : null,
+      customPayload: customPayload ? customPayload.trim() : null,
       createdById: authResult.payload.id,
     }));
 

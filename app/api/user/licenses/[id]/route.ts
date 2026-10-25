@@ -52,8 +52,12 @@ export async function GET(
     });
     const usageMinutes = Math.round(totalUsedMs / (1000 * 60));
 
+    // 自定义载荷含偏移量与特征码等密钥材料，只应经封签信封下发
+    const licenseView: Record<string, unknown> = { ...license };
+    delete licenseView.customPayload;
+
     return NextResponse.json({
-      ...license,
+      ...licenseView,
       unbindStatus,
       usageMinutes,
     });

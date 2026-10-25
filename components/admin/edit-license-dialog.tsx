@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
@@ -32,6 +33,7 @@ interface License {
   extraUnbindCount?: number;
   hwid: string | null;
   note?: string | null;
+  customPayload?: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -53,6 +55,14 @@ const formSchema = z.object({
   durationUnit: z.enum(['minutes', 'hours', 'days', 'weeks']).default('days'),
   hardwareBindingEnabled: z.boolean(),
   allowSelfUnbind: z.boolean().default(true),
+  customPayload: z.string().optional().refine(
+    val => {
+      if (!val || !val.trim()) return true;
+      if (new TextEncoder().encode(val.trim()).length > 65520) return false;
+      try { JSON.parse(val.trim()); return true; } catch { return false; }
+    },
+    { message: '自定义载荷必须为合法 JSON 且不超过 65520 字节' }
+  ),
   note: z.string().max(500, '备注不能超过500字').optional(),
 }).refine(data => {
   // If it's a fixed license, or if it's already activated (which means it behaves like fixed on expirationDate modification)
@@ -135,6 +145,7 @@ export default function EditLicenseDialog({
       durationUnit: initialDuration.unit,
       hardwareBindingEnabled: license.hardwareBindingEnabled,
       allowSelfUnbind: license.allowSelfUnbind !== undefined ? license.allowSelfUnbind : true,
+      customPayload: license.customPayload || '',
       note: license.note || '',
     },
   });
@@ -159,6 +170,7 @@ export default function EditLicenseDialog({
         durationUnit: dur.unit,
         hardwareBindingEnabled: license.hardwareBindingEnabled,
         allowSelfUnbind: license.allowSelfUnbind !== undefined ? license.allowSelfUnbind : true,
+        customPayload: license.customPayload || '',
         note: license.note || '',
       });
     }
@@ -197,6 +209,7 @@ export default function EditLicenseDialog({
         softwareName: data.softwareName,
         hardwareBindingEnabled: data.hardwareBindingEnabled,
         allowSelfUnbind: data.allowSelfUnbind,
+        customPayload: data.customPayload !== undefined ? (data.customPayload ? data.customPayload.trim() : null) : undefined,
         note: data.note !== undefined ? data.note.trim() : undefined,
       };
 
@@ -553,6 +566,27 @@ export default function EditLicenseDialog({
                 提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密为一机一卡不可换绑。
               </div>
             )}
+
+            <FormField
+              control={form.control}
+              name="customPayload"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>独立自定义载荷 / JSON (可选)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder='留空则自动继承所属软件默认配置。填入则覆盖，例如: {"vip_key": "xxx"}'
+                      rows={3}
+                      className="font-mono text-xs"
+                      {...field}
+                      value={field.value || ''}
+                    />
+                  </FormControl>
+                  <FormDescription>为此卡密单独下发专属密钥或配置数据；留空则继承软件默认载荷。</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

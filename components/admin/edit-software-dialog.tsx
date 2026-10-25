@@ -18,6 +18,7 @@ export interface SoftwareItem {
   enabled: boolean;
   minVersionCode?: number | null;
   maxVersionCode?: number | null;
+  customPayload?: string | null;
   licenseCount?: number;
   versionCount?: number;
   createdAt: string;
@@ -43,6 +44,7 @@ export default function EditSoftwareDialog({
   const [description, setDescription] = useState('');
   const [minVersionCode, setMinVersionCode] = useState<string>('0');
   const [maxVersionCode, setMaxVersionCode] = useState<string>('');
+  const [customPayload, setCustomPayload] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,6 +55,7 @@ export default function EditSoftwareDialog({
       setDescription(software.description || '');
       setMinVersionCode(software.minVersionCode != null ? String(software.minVersionCode) : '0');
       setMaxVersionCode(software.maxVersionCode != null ? String(software.maxVersionCode) : '');
+      setCustomPayload(software.customPayload || '');
       setEnabled(software.enabled ?? true);
     }
   }, [software, open]);
@@ -81,6 +84,7 @@ export default function EditSoftwareDialog({
         description: description.trim() || null,
         minVersionCode: isNaN(parsedMin) ? 0 : parsedMin,
         maxVersionCode: parsedMax !== null && !isNaN(parsedMax) ? parsedMax : null,
+        customPayload: customPayload.trim() || null,
         enabled,
       };
 
@@ -184,6 +188,19 @@ export default function EditSoftwareDialog({
                 />
                 <p className="text-[11px] text-muted-foreground">高于此版本提示过期</p>
               </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-sm font-medium">默认自定义载荷 / JSON (可选)</Label>
+              <Textarea
+                placeholder='可填默认下发给客户端的 JSON 数据，例如: {"render_hook": "48 89...", "tick_offset": 288}'
+                value={customPayload}
+                onChange={(e) => setCustomPayload(e.target.value)}
+                disabled={isSubmitting}
+                rows={3}
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">卡密未单独设置载荷时，默认继承并下发此内容</p>
             </div>
 
             <div className="flex items-center justify-between border rounded-lg p-3">

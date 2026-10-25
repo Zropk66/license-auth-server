@@ -5,6 +5,7 @@ import { getClientIP, checkHeartbeatRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted } from '@/lib/blacklist';
 import { validateNonce } from '@/lib/nonce';
 import { decryptEnvelope, encryptResponse, opaqueResponse, strField, numField } from '@/lib/secure-protocol';
+import { getEffectiveHeartbeatInterval, getHeartbeatIntervalInfo } from '@/lib/heartbeat';
 
 /**
  * v2 信封加密传输：请求体为 { v, envelope, payload }，解密失败一律返回乱文；
@@ -156,19 +157,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const heartbeatSetting = await prisma.setting.findUnique({
-      where: { key: 'heartbeat_interval' },
-    });
-    const heartbeatInterval = heartbeatSetting ? parseInt(heartbeatSetting.value, 10) : 30;
+    const { interval: heartbeatInterval, maxAllowedInterval } = await getHeartbeatIntervalInfo();
 
     if (license.licenseType === 'duration') {
       const now = new Date();
       const lastHeartbeatTime = new Date(session.lastHeartbeat).getTime();
       const elapsedMs = now.getTime() - lastHeartbeatTime;
-      const expectedIntervalMs = heartbeatInterval * 1000;
+      const expectedThresholdMs = maxAllowedInterval * 1000 * 1.5;
 
-      if (elapsedMs > expectedIntervalMs * 1.5) {
-        const idleMs = elapsedMs - expectedIntervalMs;
+      if (elapsedMs > expectedThresholdMs) {
+        const idleMs = elapsedMs - heartbeatInterval * 1000;
 
         await prisma.$transaction(async (tx) => {
           const currentLicense = await tx.license.findUnique({

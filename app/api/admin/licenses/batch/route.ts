@@ -60,12 +60,18 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: '请提供有效的目标软件名称' }, { status: 400 });
       }
 
-      const targetSoftware = await prisma.software.findUnique({
-        where: { name: softwareName },
-      });
+      const targetName = softwareName.trim();
+      // 通用授权不依赖 Software 表记录，直接放行，否则与前端可选 ALL 不一致
+      const isUniversal = targetName.toUpperCase() === 'ALL' || targetName === '*';
 
-      if (!targetSoftware || !targetSoftware.enabled) {
-        return NextResponse.json({ error: '指定的目标软件不存在或已被禁用' }, { status: 400 });
+      if (!isUniversal) {
+        const targetSoftware = await prisma.software.findUnique({
+          where: { name: targetName },
+        });
+
+        if (!targetSoftware || !targetSoftware.enabled) {
+          return NextResponse.json({ error: '指定的目标软件不存在或已被禁用' }, { status: 400 });
+        }
       }
 
       const targetLicenses = await prisma.license.findMany({
@@ -82,7 +88,7 @@ export async function PATCH(req: NextRequest) {
       await prisma.$transaction(async (tx) => {
         await tx.license.updateMany({
           where: { id: { in: ids } },
-          data: { softwareName },
+          data: { softwareName: targetName },
         });
 
         await tx.session.updateMany({
@@ -102,12 +108,12 @@ export async function PATCH(req: NextRequest) {
         action: 'batch_change_software',
         targetType: 'license',
         targetId: 'multiple',
-        details: { ids, softwareName, count: targetLicenses.length },
+        details: { ids, softwareName: targetName, count: targetLicenses.length },
       });
 
       return NextResponse.json({
         success: true,
-        message: `已将 ${targetLicenses.length} 个授权所属软件更新为 ${softwareName}`,
+        message: `已将 ${targetLicenses.length} 个授权所属软件更新为 ${targetName}`,
       });
     }
 

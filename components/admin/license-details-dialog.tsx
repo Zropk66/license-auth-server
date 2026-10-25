@@ -53,6 +53,15 @@ import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import EditLicenseDialog from '@/components/admin/edit-license-dialog';
 
+/** 载荷以 JSON 存储，格式化展示便于核对字段 */
+function formatPayloadForDisplay(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
 export interface LicenseDetails {
   id: string;
   licenseKey: string;
@@ -69,6 +78,7 @@ export interface LicenseDetails {
   hwid: string | null;
   deviceName?: string | null;
   note?: string | null;
+  customPayload?: string | null;
   status: string;
   licenseType: string;
   duration?: number | null;
@@ -703,6 +713,28 @@ export default function LicenseDetailsDialog({
                       <p className="text-xs text-muted-foreground bg-card p-2.5 rounded border leading-relaxed">
                         {license.note || '暂无备注说明'}
                       </p>
+                    </div>
+
+                    <div className="p-3.5 rounded-lg border bg-muted/20 space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <Key className="h-3.5 w-3.5 text-primary" />
+                          卡密专属载荷
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs px-2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setIsEditDialogOpen(true)}
+                        >
+                          修改载荷
+                        </Button>
+                      </div>
+                      <pre className="text-[11px] font-mono text-muted-foreground bg-card p-2.5 rounded border leading-relaxed whitespace-pre-wrap break-all max-h-40 overflow-y-auto">
+                        {license.customPayload
+                          ? formatPayloadForDisplay(license.customPayload)
+                          : '未单独配置，将继承所属软件与版本的默认载荷'}
+                      </pre>
                     </div>
                   </TabsContent>
 

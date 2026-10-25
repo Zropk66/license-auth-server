@@ -46,6 +46,7 @@ function mapLicenseDetail(license: LicenseDetail) {
     unbindCountMonth: license.unbindCountMonth,
     extraUnbindCount: license.extraUnbindCount,
     note: license.note,
+    customPayload: license.customPayload,
     status: license.status,
     licenseType: license.licenseType,
     duration: license.duration,
@@ -157,6 +158,7 @@ export async function PATCH(
       hwid?: string | null;
       deviceName?: string | null;
       note?: string | null;
+      customPayload?: string | null;
       activatedAt?: Date;
     } = {};
 
@@ -214,6 +216,9 @@ export async function PATCH(
     }
     if (updateData.note !== undefined) {
       dataToUpdate.note = updateData.note ? updateData.note.trim() : null;
+    }
+    if (updateData.customPayload !== undefined) {
+      dataToUpdate.customPayload = updateData.customPayload ? updateData.customPayload.trim() : null;
     }
     // 处理HWID 重置
     const isResetHwid = updateData.resetHwid === true || updateData.resethwid === true;

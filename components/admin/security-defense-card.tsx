@@ -17,6 +17,9 @@ export default function SecurityDefenseCard() {
   const [enforceStrongPassword, setEnforceStrongPassword] = useState(false);
   const [toleranceSec, setToleranceSec] = useState('60');
   const [autoBlacklistThreshold, setAutoBlacklistThreshold] = useState('20');
+  const [riskFailMax, setRiskFailMax] = useState('5');
+  const [riskLockMin, setRiskLockMin] = useState('30');
+  const [riskBogusHwidBlock, setRiskBogusHwidBlock] = useState(true);
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -29,11 +32,17 @@ export default function SecurityDefenseCard() {
       const strongPass = data.find((s) => s.key === 'enforce_strong_password')?.value === 'true';
       const tolerance = data.find((s) => s.key === 'security_nonce_tolerance_sec')?.value || '60';
       const threshold = data.find((s) => s.key === 'security_auto_blacklist_threshold')?.value || '20';
+      const failMax = data.find((s) => s.key === 'risk_license_fail_max')?.value || '5';
+      const lockMin = data.find((s) => s.key === 'risk_license_lock_min')?.value || '30';
+      const bogusFlag = data.find((s) => s.key === 'risk_bogus_hwid_block')?.value;
 
       setEnforceNonce(nonce);
       setEnforceStrongPassword(strongPass);
       setToleranceSec(tolerance);
       setAutoBlacklistThreshold(threshold);
+      setRiskFailMax(failMax);
+      setRiskLockMin(lockMin);
+      setRiskBogusHwidBlock(bogusFlag === undefined ? true : bogusFlag === 'true');
     } catch (err: any) {
       toast({
         title: '错误',
@@ -51,6 +60,14 @@ export default function SecurityDefenseCard() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const failMaxNum = parseInt(riskFailMax, 10);
+    const lockMinNum = parseInt(riskLockMin, 10);
+    if (isNaN(failMaxNum) || failMaxNum < 1 || isNaN(lockMinNum) || lockMinNum < 1) {
+      toast({ title: '错误', description: '风控阈值与锁定时长必须为正整数', variant: 'destructive' });
+      return;
+    }
+
     setSaving(true);
     try {
       const res = await fetch('/api/admin/settings', {
@@ -62,6 +79,9 @@ export default function SecurityDefenseCard() {
             { key: 'enforce_strong_password', value: String(enforceStrongPassword) },
             { key: 'security_nonce_tolerance_sec', value: toleranceSec },
             { key: 'security_auto_blacklist_threshold', value: autoBlacklistThreshold },
+            { key: 'risk_license_fail_max', value: String(failMaxNum) },
+            { key: 'risk_license_lock_min', value: String(lockMinNum) },
+            { key: 'risk_bogus_hwid_block', value: String(riskBogusHwidBlock) },
           ],
         }),
       });
@@ -156,6 +176,48 @@ export default function SecurityDefenseCard() {
                   1 小时内触发限流 429 或撞库非法卡密累计达到该值时，自动封禁 24 小时并报警。
                 </p>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid gap-1.5 border rounded-lg p-3">
+                <Label className="text-xs font-medium">单卡密连续失败锁定阈值 (次)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={riskFailMax}
+                  onChange={(e) => setRiskFailMax(e.target.value)}
+                  className="text-xs h-8"
+                  required
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  同一卡密累计失败次数达到该值后临时锁定，覆盖设备不匹配与软件不匹配。
+                </p>
+              </div>
+
+              <div className="grid gap-1.5 border rounded-lg p-3">
+                <Label className="text-xs font-medium">卡密锁定持续时长 (分钟)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={riskLockMin}
+                  onChange={(e) => setRiskLockMin(e.target.value)}
+                  className="text-xs h-8"
+                  required
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  锁定期内该卡密的验证请求一律拒绝，到期后自动解除。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border rounded-lg p-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">拦截伪造设备标识</Label>
+                <p className="text-xs text-muted-foreground">
+                  开启后拒绝全零、全 F、单一重复字符、沙箱默认指纹等明显伪造的 HWID。
+                </p>
+              </div>
+              <Switch checked={riskBogusHwidBlock} onCheckedChange={setRiskBogusHwidBlock} />
             </div>
 
             <div className="flex justify-end pt-2">

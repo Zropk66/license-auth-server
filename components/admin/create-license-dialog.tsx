@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Loader2 } from 'lucide-react';
@@ -53,6 +54,14 @@ const formSchema = z.object({
   durationUnit: z.enum(['minutes', 'hours', 'days', 'weeks']).default('days'),
   hardwareBindingEnabled: z.boolean().default(false),
   allowSelfUnbind: z.boolean().default(true),
+  customPayload: z.string().optional().refine(
+    val => {
+      if (!val || !val.trim()) return true;
+      if (new TextEncoder().encode(val.trim()).length > 65520) return false;
+      try { JSON.parse(val.trim()); return true; } catch { return false; }
+    },
+    { message: '自定义载荷必须为合法 JSON 且不超过 65520 字节' }
+  ),
   note: z.string().max(500, '备注不能超过500字').optional(),
 }).refine(data => {
   if (data.licenseType === 'fixed') {
@@ -201,6 +210,7 @@ export default function CreateLicenseDialog({
         licenseType: data.licenseType,
         hardwareBindingEnabled: data.hardwareBindingEnabled,
         allowSelfUnbind: data.allowSelfUnbind,
+        customPayload: data.customPayload ? data.customPayload.trim() : undefined,
         note: data.note ? data.note.trim() : undefined,
       };
 
@@ -637,6 +647,27 @@ export default function CreateLicenseDialog({
                 提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密将严格执行一机一卡不可换绑。
               </div>
             )}
+
+            <FormField
+              control={form.control}
+              name="customPayload"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>独立自定义载荷 / JSON (可选)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder='留空则自动继承所属软件默认配置。填入则单独覆盖，例如: {"vip_key": "xxx"}'
+                      rows={3}
+                      className="font-mono text-xs"
+                      {...field}
+                      value={field.value || ''}
+                    />
+                  </FormControl>
+                  <FormDescription>若需要对此卡密单独下发专属密钥或配置，可在此填写 JSON 数据；留空则继承软件默认载荷。</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

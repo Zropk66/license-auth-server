@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { signPayload, getOrCreateKeyPair } from '@/lib/crypto-sign';
-import { sealPayload, encodeLicensePayload } from '@/lib/payload-seal';
+import { sealPayload, composeLicensePayload, mergeCustomPayloads } from '@/lib/payload-seal';
 import prisma from '@/lib/prisma';
 import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
@@ -16,6 +16,8 @@ import {
   checkSoftwareVersionAllowed,
 } from '@/lib/secure-protocol';
 import { logVerificationAttempt } from '@/lib/verification-logger';
+import { getEffectiveHeartbeatInterval } from '@/lib/heartbeat';
+import { isBogusHwid, isBogusHwidBlockEnabled, checkLicenseRisk, recordLicenseFailure, recordLicenseSuccess } from '@/lib/risk-control';
 
 /**
  * v2 信封加密传输：请求体为 { v, envelope, payload }，解密失败一律返回乱文；
@@ -160,6 +162,40 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const hwidCheck = isBogusHwid(hwid);
+    if (hwidCheck.bogus && await isBogusHwidBlockEnabled()) {
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        deviceName,
+        success: false,
+        reason: 'bogus_hwid',
+      });
+      return enc({
+        error: 'Invalid hardware ID',
+        message: hwidCheck.reason || '设备标识异常，已被安全策略拦截。',
+      });
+    }
+
+    const riskCheck = await checkLicenseRisk(licenseKey);
+    if (riskCheck.blocked) {
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        deviceName,
+        success: false,
+        reason: 'license_risk_locked',
+      });
+      return enc({
+        error: 'License locked',
+        message: riskCheck.reason || '该卡密因异常尝试已被安全锁定。',
+      });
+    }
+
     const license = await prisma.license.findUnique({
       where: { licenseKey },
       include: {
@@ -179,6 +215,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'invalid_license_key',
       });
+      await recordLicenseFailure(licenseKey, ipAddress, 'invalid_license_key');
       recordSuspiciousActivity(ipAddress, 'bruteforce', hwid);
       return enc({
         error: 'Invalid license key',
@@ -200,6 +237,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'software_mismatch',
       });
+      await recordLicenseFailure(licenseKey, ipAddress, 'software_mismatch');
       return enc({
         error: 'Software name mismatch',
         message: `许可证软件不匹配：该授权仅适用于「${license.softwareName}」。`,
@@ -376,6 +414,7 @@ export async function POST(req: NextRequest) {
           success: false,
           reason: 'hwid_mismatch',
         });
+        await recordLicenseFailure(licenseKey, ipAddress, 'hwid_mismatch');
         return enc({
           error: 'License is bound to a different hardware ID',
           message: '许可证已在另一台设备上绑定使用，当前设备无权访问。',
@@ -445,17 +484,13 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    // 获取心跳间隔设置
-    const heartbeatSetting = await prisma.setting.findUnique({
-      where: { key: 'heartbeat_interval' },
-    });
-    const heartbeatInterval = heartbeatSetting ? parseInt(heartbeatSetting.value, 10) : 30;
+    const heartbeatInterval = await getEffectiveHeartbeatInterval();
 
-    // 记录成功的验证尝试与终端日志
+    recordLicenseSuccess(activeLicense.licenseKey);
     await logVerificationAttempt({
       ipAddress,
       licenseKey,
-      softwareName: activeLicense.softwareName,
+      softwareName: isUniversalLicense ? softwareName : activeLicense.softwareName,
       hwid,
       deviceName,
       success: true,
@@ -492,6 +527,17 @@ export async function POST(req: NextRequest) {
       orderBy: { versionCode: 'desc' },
     });
 
+    // 版本专属载荷必须取自客户端实际运行的版本，而非最高版本。
+    // 旧客户端仍允许使用时，拿最新版的偏移会直接错位。
+    const clientVersion = versionCode !== undefined
+      ? await prisma.softwareVersion.findFirst({
+          where: {
+            softwareName: isUniversalLicense ? softwareName : activeLicense.softwareName,
+            versionCode,
+          },
+        })
+      : null;
+
     let hasUpdate = false;
     if (latestVer && versionCode !== undefined) {
       hasUpdate = latestVer.versionCode > versionCode;
@@ -504,18 +550,22 @@ export async function POST(req: NextRequest) {
     // HWID 参与派生使载荷只对签发时的设备可用。未启用绑定的授权允许空 HWID，
     // 此时载荷与设备无关，与原有行为一致。
     const { privateKey } = getOrCreateKeyPair();
-    const featureMask = 0xFFFFFFFF;
     const expiresAtMs = activeLicense.expirationDate
       ? activeLicense.expirationDate.getTime()
       : 0;
     const bindingMachineId = hwid || activeLicense.licenseKey;
 
+    const effectiveCustomPayload = mergeCustomPayloads(
+      boundSoftware?.customPayload,
+      clientVersion?.customPayload,
+      activeLicense.customPayload
+    );
+
     const sealed = sealPayload(
-      encodeLicensePayload({
+      composeLicensePayload({
         issuedAt: Date.now(),
         expiresAt: expiresAtMs,
-        featureMask,
-        reserved: 0,
+        customPayload: effectiveCustomPayload,
       }),
       activeLicense.licenseKey,
       bindingMachineId,

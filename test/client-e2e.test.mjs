@@ -7,6 +7,8 @@ import {
   LicenseClient,
   createV2VerifyPayload,
   decodeLicensePayload,
+  deriveV2KeyStream,
+  computeV2Binding,
 } from '../test-client/client.mjs';
 
 test('runClient executes verify protocol against mock server with universal ALL license', async () => {
@@ -43,27 +45,19 @@ test('runClient executes verify protocol against mock server with universal ALL 
 
       assert.equal(reqObj.softwareName, 'GameClientApp');
 
-      const rawPayload = Buffer.alloc(24);
+      const rawPayload = Buffer.alloc(16);
       rawPayload.writeBigUInt64LE(BigInt(Date.now()), 0);
       rawPayload.writeBigUInt64LE(BigInt(Date.now() + 500000), 8);
-      rawPayload.writeUInt32LE(0xffffffff, 16);
-      rawPayload.writeUInt32LE(0, 20);
 
       const nonce = crypto.randomBytes(16);
-      const infoKey = Buffer.concat([Buffer.from(reqObj.hwid, 'utf8'), Buffer.from([0x01])]);
-      const prk1 = crypto.createHmac('sha256', nonce).update(Buffer.from(reqObj.licenseKey, 'utf8')).digest();
-      const streamKey = crypto.createHmac('sha256', prk1).update(Buffer.concat([infoKey, Buffer.from([1])])).digest();
-      const prk2 = crypto.createHmac('sha256', nonce).update(streamKey).digest();
-      const keyStream = crypto.createHmac('sha256', prk2).update(Buffer.from([1])).digest().subarray(0, 24);
+      const keyStream = deriveV2KeyStream(reqObj.licenseKey, nonce, reqObj.hwid, rawPayload.length);
 
-      const cipherBuf = Buffer.alloc(24);
-      for (let i = 0; i < 24; i += 1) {
+      const cipherBuf = Buffer.alloc(16);
+      for (let i = 0; i < 16; i += 1) {
         cipherBuf[i] = rawPayload[i] ^ keyStream[i];
       }
 
-      const infoBind = Buffer.concat([Buffer.from(reqObj.hwid, 'utf8'), Buffer.from([0x02])]);
-      const bindKey = crypto.createHmac('sha256', prk1).update(Buffer.concat([infoBind, Buffer.from([1])])).digest();
-      const binding = crypto.createHmac('sha256', bindKey).update(Buffer.concat([nonce, cipherBuf])).digest().subarray(0, 16);
+      const binding = computeV2Binding(cipherBuf, nonce, reqObj.licenseKey, reqObj.hwid);
       const sig = crypto.sign(null, Buffer.concat([nonce, binding, cipherBuf]), edPrivate);
 
       const signedData = {
@@ -106,24 +100,25 @@ test('runClient executes verify protocol against mock server with universal ALL 
   await new Promise((resolve) => server.listen(0, resolve));
   const port = server.address().port;
 
-  const result = await runClient({
-    protocol: 'verify',
-    url: `http://127.0.0.1:${port}`,
-    licenseKey: 'TEST-UNIVERSAL-KEY',
-    softwareName: 'GameClientApp',
-    hwid: 'TEST-HWID-001',
-    rsaPublicKey: rsaPublic,
-    authPublicKey: edPublic,
-    silent: true,
-  });
+  try {
+    const result = await runClient({
+      protocol: 'verify',
+      url: `http://127.0.0.1:${port}`,
+      licenseKey: 'TEST-UNIVERSAL-KEY',
+      softwareName: 'GameClientApp',
+      hwid: 'TEST-HWID-001',
+      rsaPublicKey: rsaPublic,
+      authPublicKey: edPublic,
+      silent: true,
+    });
 
-  assert.ok(result.signatureVerified);
-  assert.equal(result.data.status, 'active');
-  assert.equal(result.data.softwareName, 'ALL');
-  assert.ok(result.unsealedPayload);
-  assert.equal(result.unsealedPayload.featureMask, 0xffffffff);
-
-  server.close();
+    assert.ok(result.signatureVerified);
+    assert.equal(result.data.status, 'active');
+    assert.equal(result.data.softwareName, 'ALL');
+    assert.ok(result.unsealedPayload);
+  } finally {
+    server.close();
+  }
 });
 
 test('LicenseClient full lifecycle: verify, checkUpdate, sendHeartbeat, reportOffline', async () => {

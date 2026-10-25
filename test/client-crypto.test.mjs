@@ -7,22 +7,43 @@ import {
   createVeilRequest,
   openVeilResponse,
   decodeLicensePayload,
+  deriveV2KeyStream,
+  computeV2Binding,
 } from '../test-client/client.mjs';
 
-test('decodeLicensePayload decodes 24 byte binary payload', () => {
-  const buf = Buffer.alloc(24);
+test('decodeLicensePayload decodes 16 byte binary payload', () => {
+  const buf = Buffer.alloc(16);
   const now = Date.now();
   const expire = now + 86400000;
   buf.writeBigUInt64LE(BigInt(now), 0);
   buf.writeBigUInt64LE(BigInt(expire), 8);
-  buf.writeUInt32LE(0xffffffff, 16);
-  buf.writeUInt32LE(0, 20);
 
   const decoded = decodeLicensePayload(buf);
   assert.equal(decoded.issuedAt, now);
   assert.equal(decoded.expiresAt, expire);
-  assert.equal(decoded.featureMask, 0xffffffff);
-  assert.equal(decoded.reserved, 0);
+  assert.equal(decoded.dynamicData, undefined);
+});
+
+test('decodeLicensePayload decodes combined payload with dynamicData json', () => {
+  const buf16 = Buffer.alloc(16);
+  const now = Date.now();
+  const expire = now + 86400000;
+  buf16.writeBigUInt64LE(BigInt(now), 0);
+  buf16.writeBigUInt64LE(BigInt(expire), 8);
+
+  const jsonBuf = Buffer.from(JSON.stringify({
+    offsets: { 'Player::tick': 288 },
+    sigs: { 'hook_main': '48 89 5C' }
+  }), 'utf8');
+
+  const combined = Buffer.concat([buf16, jsonBuf]);
+  const decoded = decodeLicensePayload(combined);
+  assert.equal(decoded.issuedAt, now);
+  assert.equal(decoded.expiresAt, expire);
+  assert.deepEqual(decoded.dynamicData, {
+    offsets: { 'Player::tick': 288 },
+    sigs: { 'hook_main': '48 89 5C' }
+  });
 });
 
 test('v2 verify request packaging and response decryption round trip', () => {
@@ -72,27 +93,19 @@ test('v2 verify request packaging and response decryption round trip', () => {
   assert.equal(decryptedReq.hwid, hwid);
   assert.equal(decryptedReq.softwareName, softwareName);
 
-  const rawPayload = Buffer.alloc(24);
+  const rawPayload = Buffer.alloc(16);
   rawPayload.writeBigUInt64LE(BigInt(Date.now()), 0);
   rawPayload.writeBigUInt64LE(BigInt(Date.now() + 100000), 8);
-  rawPayload.writeUInt32LE(0xffffffff, 16);
-  rawPayload.writeUInt32LE(0, 20);
 
   const nonce = crypto.randomBytes(16);
-  const infoKey = Buffer.concat([Buffer.from(hwid, 'utf8'), Buffer.from([0x01])]);
-  const prk1 = crypto.createHmac('sha256', nonce).update(Buffer.from(cardKey, 'utf8')).digest();
-  const streamKey = crypto.createHmac('sha256', prk1).update(Buffer.concat([infoKey, Buffer.from([1])])).digest();
-  const prk2 = crypto.createHmac('sha256', nonce).update(streamKey).digest();
-  const keyStream = crypto.createHmac('sha256', prk2).update(Buffer.from([1])).digest().subarray(0, 24);
+  const keyStream = deriveV2KeyStream(cardKey, nonce, hwid, rawPayload.length);
 
-  const cipherBuf = Buffer.alloc(24);
-  for (let i = 0; i < 24; i += 1) {
+  const cipherBuf = Buffer.alloc(16);
+  for (let i = 0; i < 16; i += 1) {
     cipherBuf[i] = rawPayload[i] ^ keyStream[i];
   }
 
-  const infoBind = Buffer.concat([Buffer.from(hwid, 'utf8'), Buffer.from([0x02])]);
-  const bindKey = crypto.createHmac('sha256', prk1).update(Buffer.concat([infoBind, Buffer.from([1])])).digest();
-  const binding = crypto.createHmac('sha256', bindKey).update(Buffer.concat([nonce, cipherBuf])).digest().subarray(0, 16);
+  const binding = computeV2Binding(cipherBuf, nonce, cardKey, hwid);
   const sig = crypto.sign(null, Buffer.concat([nonce, binding, cipherBuf]), edPrivate);
 
   const sealed = {
@@ -122,7 +135,6 @@ test('v2 verify request packaging and response decryption round trip', () => {
   const clientResult = decryptV2Response(wireRespPayload, req.sessionKey, edPublic, cardKey, hwid);
   assert.ok(clientResult.signatureVerified);
   assert.ok(clientResult.unsealedPayload);
-  assert.equal(clientResult.unsealedPayload.featureMask, 0xffffffff);
 });
 
 test('veil request creation and response unsealing round trip', () => {
@@ -149,11 +161,9 @@ test('veil request creation and response unsealing round trip', () => {
   assert.equal(req.evidence, Buffer.alloc(16).toString('hex'));
 
   const now = Date.now();
-  const payloadBuf = Buffer.alloc(24);
+  const payloadBuf = Buffer.alloc(16);
   payloadBuf.writeBigUInt64LE(BigInt(now), 0);
   payloadBuf.writeBigUInt64LE(BigInt(now + 200000), 8);
-  payloadBuf.writeUInt32LE(0x12345678, 16);
-  payloadBuf.writeUInt32LE(0, 20);
 
   const nonce = crypto.randomBytes(12);
   const hwidBytes = Buffer.from(hwid, 'utf8');
@@ -189,5 +199,4 @@ test('veil request creation and response unsealing round trip', () => {
 
   const unsealed = openVeilResponse(envelope, edPublic, cardKey, hwid, evidenceBuf);
   assert.ok(unsealed);
-  assert.equal(unsealed.featureMask, 0x12345678);
 });

@@ -43,8 +43,9 @@ services:
     environment:
       # 覆盖 DATABASE_URL，指向 Docker 内部 db 服务
       - DATABASE_URL=postgresql://${POSTGRES_USER:-license_auth}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-license_auth}?schema=public
-    # 注意：生产环境建议使用 'migrate deploy' 替代 'db push'，需先通过 'prisma migrate dev' 生成迁移文件
-    command: npx prisma db push --accept-data-loss
+    # 不带 --accept-data-loss：破坏性变更会失败退出，交由人工确认后处理，
+    # 避免重构字段时静默清空已有授权与设备绑定
+    command: npx prisma db push
     depends_on:
       db:
         condition: service_healthy

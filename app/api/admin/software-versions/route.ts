@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { logAction } from '@/lib/audit';
+import { createSoftwareVersionSchema } from '@/lib/validations';
 
 export async function GET(req: NextRequest) {
   const authResult = await validateAdminAuth(req);
@@ -38,25 +39,38 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { softwareName, version, versionCode, changelog, downloadUrl, fileHash, isForced, enabled } = body;
 
-    if (!softwareName || !version || !versionCode) {
+    const parseResult = createSoftwareVersionSchema.safeParse(body);
+    if (!parseResult.success) {
       return NextResponse.json(
-        { error: 'Software Name, Version and Version Code are required' },
+        { error: parseResult.error.issues[0]?.message || '参数有误' },
         { status: 400 }
       );
     }
+
+    const {
+      softwareName,
+      version,
+      versionCode,
+      changelog,
+      downloadUrl,
+      fileHash,
+      isForced,
+      enabled,
+      customPayload,
+    } = parseResult.data;
 
     const newVersion = await prisma.softwareVersion.create({
       data: {
         softwareName: softwareName.trim(),
         version: version.trim(),
-        versionCode: parseInt(versionCode, 10),
+        versionCode,
         changelog: changelog?.trim() || '',
         downloadUrl: downloadUrl ? downloadUrl.trim() : '',
         fileHash: fileHash?.trim() || null,
         isForced: Boolean(isForced),
         enabled: enabled !== undefined ? Boolean(enabled) : true,
+        customPayload: customPayload ? customPayload.trim() : null,
       },
     });
 

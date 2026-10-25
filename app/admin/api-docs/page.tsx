@@ -24,27 +24,151 @@ export default function ApiDocsPage() {
     }, 2000);
   };
 
+  const jsCode = `import crypto from 'node:crypto';
+
+export class LicenseClient {
+  constructor(baseUrl, rsaPublicKeyPem, authPublicKeyPem) {
+    this.baseUrl = baseUrl.replace(/\\/$/, '');
+    this.rsaPublicKey = rsaPublicKeyPem;
+    this.authPublicKey = authPublicKeyPem;
+    this.sessionId = null;
+    this.heartbeatInterval = 30;
+    this.heartbeatTimer = null;
+    this.customJson = null;
+  }
+
+  async verify(licenseKey, softwareName, hwid) {
+    const sessionKey = crypto.randomBytes(32);
+    const encryptedKey = crypto.publicEncrypt({
+      key: this.rsaPublicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: 'sha256',
+    }, sessionKey);
+
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', sessionKey, iv);
+    const reqPlain = JSON.stringify({
+      licenseKey, softwareName, hwid,
+      nonce: crypto.randomBytes(16).toString('hex'),
+      timestamp: Date.now()
+    });
+    const ct = Buffer.concat([cipher.update(reqPlain, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+
+    const resp = await fetch(this.baseUrl + '/api/license-verification/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        v: 2,
+        envelope: encryptedKey.toString('base64'),
+        payload: iv.toString('hex') + ':' + tag.toString('hex') + ':' + ct.toString('hex')
+      })
+    });
+
+    const respJson = await resp.json();
+    const [rIv, rTag, rCt] = respJson.payload.split(':');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', sessionKey, Buffer.from(rIv, 'hex'));
+    decipher.setAuthTag(Buffer.from(rTag, 'hex'));
+    const decrypted = JSON.parse(Buffer.concat([decipher.update(Buffer.from(rCt, 'hex')), decipher.final()]).toString('utf8'));
+
+    const data = decrypted.data || decrypted;
+    this.sessionId = data.sessionId;
+    this.heartbeatInterval = data.heartbeatInterval || 30;
+
+    // 解封 16 字节头部与动态 JSON 载荷。密钥流分两步派生，等价于先取 32 字节
+    // 子密钥再 HKDF-Expand 到密文全长。只算单个 HMAC 块会让超过 32 字节的载荷错位
+    if (data.payload && this.authPublicKey) {
+      const p = data.payload;
+      const nonce = Buffer.from(p.nonceHex, 'hex');
+      const cipherBuf = Buffer.from(p.cipherHex, 'hex');
+      const signature = Buffer.from(p.signatureHex, 'hex');
+
+      const hkdf = (ikm, salt, info, length) =>
+        Buffer.from(crypto.hkdfSync('sha256', ikm, salt, info, length));
+
+      const cardBuf = Buffer.from(licenseKey, 'utf8');
+      const infoKey = Buffer.concat([Buffer.from(hwid, 'utf8'), Buffer.from([0x01])]);
+      const infoBind = Buffer.concat([Buffer.from(hwid, 'utf8'), Buffer.from([0x02])]);
+
+      const streamKey = hkdf(cardBuf, nonce, infoKey, 32);
+      const keyStream = hkdf(streamKey, nonce, Buffer.alloc(0), cipherBuf.length);
+      const plain = Buffer.alloc(cipherBuf.length);
+      for (let i = 0; i < cipherBuf.length; i++) plain[i] = cipherBuf[i] ^ keyStream[i];
+
+      const bindKey = hkdf(cardBuf, nonce, infoBind, 32);
+      const binding = crypto
+        .createHmac('sha256', bindKey)
+        .update(Buffer.concat([nonce, cipherBuf]))
+        .digest()
+        .subarray(0, 16);
+
+      // 验签是唯一能证明载荷由服务端签发的环节，跳过等于放弃防篡改
+      const authentic = crypto.verify(
+        null,
+        Buffer.concat([nonce, binding, cipherBuf]),
+        crypto.createPublicKey(this.authPublicKey),
+        signature
+      );
+      if (!authentic) throw new Error('授权载荷签名校验失败');
+
+      const issuedAt = Number(plain.readBigUInt64LE(0));
+      const expiresAt = Number(plain.readBigUInt64LE(8));
+      if (plain.length > 16) {
+        this.customJson = JSON.parse(plain.subarray(16).toString('utf8'));
+      }
+    }
+
+    return data;
+  }
+
+  // 动态随机心跳调度
+  startHeartbeat() {
+    this.stopHeartbeat();
+    const schedule = () => {
+      this.heartbeatTimer = setTimeout(async () => {
+        try {
+          schedule();
+        } catch {
+          this.heartbeatTimer = setTimeout(schedule, 5000);
+        }
+      }, this.heartbeatInterval * 1000);
+    };
+    schedule();
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer);
+  }
+}
+`;
+
   const csharpCode = `using System;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
 
 namespace LicenseAuthClient
 {
+    // 需引用 BouncyCastle.Cryptography，.NET 内置库不提供 Ed25519 验签
     public class LicenseClient
     {
         private readonly HttpClient _httpClient = new HttpClient();
         private readonly string _serverBaseUrl;
         private readonly RSA _serverRsaPublicKey;
+        private readonly Ed25519PublicKeyParameters _authPublicKey;
 
-        public LicenseClient(string baseUrl, string serverRsaPubPem)
+        public LicenseClient(string baseUrl, string serverRsaPubPem, string authEd25519PubPem)
         {
             _serverBaseUrl = baseUrl.TrimEnd('/');
             _serverRsaPublicKey = RSA.Create();
             _serverRsaPublicKey.ImportFromPem(serverRsaPubPem.ToCharArray());
+            _authPublicKey = ParseEd25519PublicKey(authEd25519PubPem);
         }
 
         public async Task<string> VerifyLicenseAsync(string licenseKey, string softwareName, string hwid, string deviceName = null)
@@ -84,7 +208,100 @@ namespace LicenseAuthClient
             string respPayload = respDoc.RootElement.GetProperty("payload").GetString();
 
             string decryptedJson = AesGcmDecrypt(sessionKey, respPayload);
+
+            using var dataDoc = JsonDocument.Parse(decryptedJson);
+            var root = dataDoc.RootElement.TryGetProperty("data", out var d) ? d : dataDoc.RootElement;
+            if (root.TryGetProperty("payload", out var payloadElem))
+            {
+                string nonceHex = payloadElem.GetProperty("nonceHex").GetString();
+                string cipherHex = payloadElem.GetProperty("cipherHex").GetString();
+                string sigHex = payloadElem.GetProperty("signatureHex").GetString();
+                byte[] unsealed = UnsealPayload(nonceHex, cipherHex, sigHex, licenseKey, hwid);
+                ulong issuedAt = BitConverter.ToUInt64(unsealed, 0);
+                ulong expiresAt = BitConverter.ToUInt64(unsealed, 8);
+                string customJson = unsealed.Length > 16 ? Encoding.UTF8.GetString(unsealed, 16, unsealed.Length - 16) : null;
+            }
+
             return decryptedJson;
+        }
+
+        public byte[] UnsealPayload(string nonceHex, string cipherHex, string sigHex, string cardKey, string hwid)
+        {
+            byte[] nonce = Convert.FromHexString(nonceHex);
+            byte[] cipher = Convert.FromHexString(cipherHex);
+            byte[] keyStream = DeriveKeyStream(cardKey, nonce, hwid, cipher.Length);
+            byte[] plain = new byte[cipher.Length];
+            for (int i = 0; i < cipher.Length; i++) plain[i] = (byte)(cipher[i] ^ keyStream[i]);
+
+            byte[] binding = HmacSha256(
+                DeriveMachineKey(cardKey, nonce, hwid, 0x02, 32),
+                nonce.Concat(cipher).ToArray()).Take(16).ToArray();
+
+            byte[] signed = nonce.Concat(binding).Concat(cipher).ToArray();
+            var verifier = new Ed25519Signer();
+            verifier.Init(false, _authPublicKey);
+            verifier.BlockUpdate(signed, 0, signed.Length);
+            if (!verifier.VerifySignature(Convert.FromHexString(sigHex)))
+                throw new CryptographicException("授权载荷签名校验失败");
+
+            return plain;
+        }
+
+        private static byte[] DeriveMachineKey(string cardKey, byte[] nonce, string hwid, byte domain, int length)
+        {
+            byte[] info = Encoding.UTF8.GetBytes(hwid).Concat(new[] { domain }).ToArray();
+            return HkdfSha256(Encoding.UTF8.GetBytes(cardKey), nonce, info, length);
+        }
+
+        // 两步派生：先用 32 字节子密钥，再 HKDF-Expand 到密文全长。
+        // 只取单个 HMAC 块会让超过 32 字节的载荷在尾部错位
+        private static byte[] DeriveKeyStream(string cardKey, byte[] nonce, string hwid, int length)
+        {
+            byte[] streamKey = DeriveMachineKey(cardKey, nonce, hwid, 0x01, 32);
+            return HkdfSha256(streamKey, nonce, Array.Empty<byte>(), length);
+        }
+
+        // RFC 5869 HKDF-SHA256
+        private static byte[] HkdfSha256(byte[] ikm, byte[] salt, byte[] info, int length)
+        {
+            using var extract = new HMACSHA256(salt.Length == 0 ? new byte[32] : salt);
+            byte[] prk = extract.ComputeHash(ikm);
+
+            using var expand = new HMACSHA256(prk);
+            byte[] output = new byte[length];
+            byte[] previous = Array.Empty<byte>();
+            int offset = 0;
+            byte counter = 1;
+
+            while (offset < length)
+            {
+                byte[] block = expand.ComputeHash(previous.Concat(info).Concat(new[] { counter }).ToArray());
+                int take = Math.Min(block.Length, length - offset);
+                Array.Copy(block, 0, output, offset, take);
+                offset += take;
+                previous = block;
+                counter++;
+            }
+            return output;
+        }
+
+        private static byte[] HmacSha256(byte[] key, byte[] data)
+        {
+            using var hmac = new HMACSHA256(key);
+            return hmac.ComputeHash(data);
+        }
+
+        private static Ed25519PublicKeyParameters ParseEd25519PublicKey(string pem)
+        {
+            string base64 = pem
+                .Replace("-----BEGIN PUBLIC KEY-----", "")
+                .Replace("-----END PUBLIC KEY-----", "")
+                .Replace("\\r", "")
+                .Replace("\\n", "")
+                .Trim();
+            byte[] der = Convert.FromBase64String(base64);
+            // SubjectPublicKeyInfo 尾部固定 32 字节为原始公钥
+            return new Ed25519PublicKeyParameters(der.Skip(der.Length - 32).ToArray(), 0);
         }
 
         private static string AesGcmEncrypt(byte[] key, byte[] plaintext)
@@ -187,18 +404,63 @@ int main() {
 import uuid
 import time
 import base64
+import struct
+import hmac
+import hashlib
 import requests
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 import os
 
+def hkdf_sha256(ikm: bytes, salt: bytes, info: bytes, length: int) -> bytes:
+    return HKDF(algorithm=hashes.SHA256(), length=length, salt=salt, info=info).derive(ikm)
+
+def derive_machine_key(card_key: str, nonce: bytes, hwid: str, domain: int, length: int) -> bytes:
+    info = hwid.encode("utf-8") + bytes([domain])
+    return hkdf_sha256(card_key.encode("utf-8"), nonce, info, length)
+
+def derive_key_stream(card_key: str, nonce: bytes, hwid: str, length: int) -> bytes:
+    # 两步派生，与 Step 1 的 32 字节子密钥对齐。单步派生会让超过 32 字节的载荷错位
+    stream_key = derive_machine_key(card_key, nonce, hwid, 0x01, 32)
+    return hkdf_sha256(stream_key, nonce, b"", length)
+
 class LicenseClient:
-    def __init__(self, base_url: str, rsa_public_key_pem: str):
+    def __init__(self, base_url: str, rsa_public_key_pem: str, auth_public_key_pem: str):
         self.base_url = base_url.rstrip("/")
         self.server_public_key = serialization.load_pem_public_key(
             rsa_public_key_pem.encode("utf-8")
         )
+        self.auth_public_key = Ed25519PublicKey.from_public_bytes(
+            self._extract_ed25519_raw(auth_public_key_pem)
+        )
+
+    @staticmethod
+    def _extract_ed25519_raw(pem: str) -> bytes:
+        body = "".join(
+            line for line in pem.strip().splitlines() if not line.startswith("-----")
+        )
+        der = base64.b64decode(body)
+        return der[-32:]
+
+    def unseal_payload(self, payload: dict, license_key: str, hwid: str) -> dict:
+        nonce = bytes.fromhex(payload["nonceHex"])
+        cipher = bytes.fromhex(payload["cipherHex"])
+        signature = bytes.fromhex(payload["signatureHex"])
+
+        bind_key = derive_machine_key(license_key, nonce, hwid, 0x02, 32)
+        binding = hmac.new(bind_key, nonce + cipher, hashlib.sha256).digest()[:16]
+
+        # 验签是唯一能证明载荷由服务端签发的环节
+        self.auth_public_key.verify(signature, nonce + binding + cipher)
+
+        keystream = derive_key_stream(license_key, nonce, hwid, len(cipher))
+        plain = bytes(a ^ b for a, b in zip(cipher, keystream))
+        issued_at, expires_at = struct.unpack("<QQ", plain[:16])
+        custom_json = json.loads(plain[16:].decode("utf-8")) if len(plain) > 16 else None
+        return {"issuedAt": issued_at, "expiresAt": expires_at, "customJson": custom_json}
 
     def verify_license(self, license_key: str, software_name: str, hwid: str, device_name: str = None) -> dict:
         session_key = AESGCM.generate_key(bit_length=256)
@@ -247,10 +509,17 @@ class LicenseClient:
         resp_ct = bytes.fromhex(resp_ct_hex)
 
         decrypted_bytes = aesgcm.decrypt(resp_iv, resp_ct + resp_tag, None)
-        return json.loads(decrypted_bytes.decode("utf-8"))
+        res_data = json.loads(decrypted_bytes.decode("utf-8"))
+
+        unsealed_info = None
+        data_body = res_data.get("data", res_data)
+        if "payload" in data_body and data_body["payload"]:
+            unsealed_info = self.unseal_payload(data_body["payload"], license_key, hwid)
+
+        return {"response": data_body, "unsealed": unsealed_info}
 
 # 使用示例
-# client = LicenseClient("https://auth.example.com", "-----BEGIN PUBLIC KEY-----\\n...")
+# client = LicenseClient("https://auth.example.com", RSA_PUB_KEY_PEM, AUTH_PUB_KEY_PEM)
 # result = client.verify_license("VIP-8888-8888-8888-8888", "MyAwesomeApp", "HWID-X1Y2Z3")
 # print(result)
 `;
@@ -460,8 +729,15 @@ func (c *LicenseClient) Verify(licenseKey, softwareName, hwid, deviceName string
               <p className="text-xs text-muted-foreground">
                 用于软件启动时进行卡密鉴权。对于时长卡，首次调用将正式开启倒计时计算到期时间；对于已启用 HWID 绑定的授权，将锁定当前设备。
               </p>
-              <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
-                载荷参数: &#123; licenseKey: string, softwareName: string, hwid: string, deviceName?: string, nonce: string, timestamp: number &#125;
+              <div className="space-y-1.5">
+                <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
+                  <span className="text-muted-foreground block mb-1 font-sans text-[11px]">请求体明文参数:</span>
+                  &#123; licenseKey: string, softwareName: string, hwid: string, deviceName?: string, nonce: string, timestamp: number &#125;
+                </div>
+                <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
+                  <span className="text-muted-foreground block mb-1 font-sans text-[11px]">解密后响应数据:</span>
+                  &#123; valid: boolean, licenseKey: string, sessionId: string, heartbeatInterval: number, payload: &#123; nonceHex: string, cipherHex: string, signatureHex: string &#125; &#125;
+                </div>
               </div>
             </div>
 
@@ -476,8 +752,54 @@ func (c *LicenseClient) Verify(licenseKey, softwareName, hwid, deviceName string
               <p className="text-xs text-muted-foreground">
                 客户端在运行期间按照指定的心跳间隔周期性上报，以保持会话活跃并更新最后在线状态。
               </p>
+              <div className="space-y-1.5">
+                <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
+                  <span className="text-muted-foreground block mb-1 font-sans text-[11px]">请求体明文参数:</span>
+                  &#123; licenseKey: string, softwareName?: string, sessionId: string, hwid?: string, deviceName?: string, nonce: string, timestamp: number &#125;
+                </div>
+                <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
+                  <span className="text-muted-foreground block mb-1 font-sans text-[11px]">解密后响应数据:</span>
+                  &#123; status: &quot;active&quot;, sessionId: string, heartbeatInterval: number, timestamp: number &#125;
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="default" className="font-mono">POST</Badge>
+                  <span className="font-mono text-sm font-semibold">/api/license-verification/veil</span>
+                </div>
+                <Badge variant="outline">Veil 零基线证书固定双向通道</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                纯 JSON over TLS 协议通道，内置证书固定与客户端反调试代码完整性证据校验。载荷经 HKDF 派生密钥与 AES-256-GCM 封装下发。
+              </p>
+              <div className="space-y-1.5">
+                <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
+                  <span className="text-muted-foreground block mb-1 font-sans text-[11px]">请求参数:</span>
+                  &#123; licenseKey: string, softwareName: string, hwid: string, deviceName?: string, nonce: string, timestamp: number, evidence: string, evidenceLayout?: string, versionCode?: number &#125;
+                </div>
+                <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
+                  <span className="text-muted-foreground block mb-1 font-sans text-[11px]">响应数据:</span>
+                  &#123; success: boolean, licenseKey: string, sessionId: string, heartbeatInterval: number, envelope: &#123; issuedAt: number, nonceHex: string, cipherHex: string, tagHex: string, signatureHex: string &#125; &#125;
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="default" className="font-mono">POST</Badge>
+                  <span className="font-mono text-sm font-semibold">/api/license-verification/offline</span>
+                </div>
+                <Badge variant="outline">客户端正常下线通知</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                客户端进程正常退出时主动发起通知，立即释放当前设备占用会话，便于下次快速拉起或换端。
+              </p>
               <div className="text-xs font-mono bg-muted/40 p-2.5 rounded border">
-                载荷参数: &#123; licenseKey: string, softwareName?: string, sessionId: string, hwid?: string, deviceName?: string, nonce: string, timestamp: number &#125;
+                请求参数: &#123; licenseKey: string, hwid: string, sessionId: string &#125;
               </div>
             </div>
 
@@ -496,6 +818,33 @@ func (c *LicenseClient) Verify(licenseKey, softwareName, hwid, deviceName string
           </CardContent>
         </Card>
 
+        {/* 动态载荷与心跳协议规范 */}
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Code2 className="h-4 w-4 text-purple-500" />
+              解封授权载荷与随机心跳格式规范
+            </CardTitle>
+            <CardDescription className="text-xs">
+              客户端解密授权响应后获得的二进制数据布局与动态心跳处理标准
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs">
+            <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
+              <span className="font-semibold text-foreground">解密后明文载荷二进制布局：</span>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground font-mono">
+                <li>00 ~ 07 字节: issuedAt 8字节 uint64 LE 毫秒时间戳</li>
+                <li>08 ~ 15 字节: expiresAt 8字节 uint64 LE 毫秒时间戳，0 代表永久授权</li>
+                <li>16 字节之后: 自定义载荷 UTF-8 JSON 字符串，包含服务端合并下发的 sig 与 offset 字典</li>
+              </ul>
+            </div>
+            <div className="p-3 bg-muted/30 border rounded-lg space-y-1 text-muted-foreground">
+              <span className="font-semibold text-foreground block">动态随机心跳机制：</span>
+              <p>每次验证与心跳响应均下发 heartbeatInterval 数值。开启随机心跳后该数值为动态抽取。客户端严禁使用固定间隔，须根据每次响应下发的数值动态规划下次请求。</p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* 多语言客户端 SDK 代码 */}
         <Card>
           <CardHeader>
@@ -508,13 +857,32 @@ func (c *LicenseClient) Verify(licenseKey, softwareName, hwid, deviceName string
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="csharp" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-4 max-w-[480px]">
+            <Tabs defaultValue="javascript" className="space-y-4">
+              <TabsList className="grid w-full grid-cols-5 max-w-[620px]">
+                <TabsTrigger value="javascript">JavaScript / Node</TabsTrigger>
                 <TabsTrigger value="csharp">C# / .NET</TabsTrigger>
                 <TabsTrigger value="cpp">C / C++</TabsTrigger>
                 <TabsTrigger value="python">Python</TabsTrigger>
                 <TabsTrigger value="go">Golang</TabsTrigger>
               </TabsList>
+
+              <TabsContent value="javascript" className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">推荐适用：Electron / Node.js / 跨平台客户端</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopy('javascript', jsCode)}
+                    className="gap-1.5 h-8"
+                  >
+                    {copiedId === 'javascript' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copiedId === 'javascript' ? '已复制' : '复制代码'}
+                  </Button>
+                </div>
+                <pre className="p-4 rounded-lg bg-zinc-950 text-zinc-100 font-mono text-xs overflow-x-auto border max-h-[460px] leading-relaxed">
+                  {jsCode}
+                </pre>
+              </TabsContent>
 
               <TabsContent value="csharp" className="space-y-2">
                 <div className="flex items-center justify-between">

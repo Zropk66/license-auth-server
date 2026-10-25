@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
           ...licenseSoftwares.map((l) => l.softwareName.trim()),
           ...versionSoftwares.map((v) => v.softwareName.trim()),
         ])
-      ).filter(Boolean);
+      ).filter((name) => name && !name.includes('*') && name.toUpperCase() !== 'ALL');
 
       for (const name of distinctNames) {
         await prisma.software.upsert({
@@ -62,6 +62,7 @@ export async function GET(req: NextRequest) {
           enabled: s.enabled,
           minVersionCode: s.minVersionCode,
           maxVersionCode: s.maxVersionCode,
+          customPayload: s.customPayload,
           licenseCount,
           versionCount,
           createdAt: s.createdAt,
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, code, description, enabled, minVersionCode, maxVersionCode } = parseResult.data;
+    const { name, code, description, enabled, minVersionCode, maxVersionCode, customPayload } = parseResult.data;
     const trimmedName = name.trim();
 
     // 检查名称唯一性
@@ -119,6 +120,7 @@ export async function POST(req: NextRequest) {
         enabled: enabled ?? true,
         minVersionCode: minVersionCode ?? 0,
         maxVersionCode: maxVersionCode ?? null,
+        customPayload: customPayload?.trim() || null,
       },
     });
 

@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrCreateKeyPair } from '@/lib/crypto-sign';
 import { sealEnvelope, openEnvelope, MAX_EVIDENCE } from '@/lib/veil-envelope';
-import { encodeLicensePayload } from '@/lib/payload-seal';
+import { composeLicensePayload, mergeCustomPayloads } from '@/lib/payload-seal';
 import prisma from '@/lib/prisma';
 import { getClientIP, checkVerifyRateLimit } from '@/lib/rate-limit';
 import { isBlacklisted, recordSuspiciousActivity } from '@/lib/blacklist';
 import { validateNonce } from '@/lib/nonce';
 import { logVerificationAttempt } from '@/lib/verification-logger';
 import { checkSoftwareVersionAllowed } from '@/lib/secure-protocol';
+import { getEffectiveHeartbeatInterval } from '@/lib/heartbeat';
+import { isBogusHwid, isBogusHwidBlockEnabled, checkLicenseRisk, recordLicenseFailure, recordLicenseSuccess } from '@/lib/risk-control';
 
 /**
  * veil 客户端验证端点。
@@ -174,7 +176,6 @@ export async function POST(req: NextRequest) {
     const timestamp = numField(body.timestamp);
     const softwareName = strField(body.softwareName);
     const versionCode = numField(body.versionCode);
-
     // 上报的证据只用于记录，不进派生。格式非法即拒绝，那属于请求
     // 格式错误。
     const reportedEvidence = decodeReportedEvidence(body.evidence);
@@ -276,6 +277,34 @@ export async function POST(req: NextRequest) {
       return failure('BAD_REQUEST', '缺少软件标识。');
     }
 
+    const hwidCheck = isBogusHwid(hwid);
+    if (hwidCheck.bogus && await isBogusHwidBlockEnabled()) {
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        deviceName,
+        success: false,
+        reason: 'bogus_hwid',
+      });
+      return failure('BAD_REQUEST', hwidCheck.reason || '设备标识异常。');
+    }
+
+    const riskCheck = await checkLicenseRisk(licenseKey);
+    if (riskCheck.blocked) {
+      await logVerificationAttempt({
+        ipAddress,
+        licenseKey,
+        softwareName,
+        hwid,
+        deviceName,
+        success: false,
+        reason: 'license_risk_locked',
+      });
+      return failure('DENIED', riskCheck.reason || '该卡密因异常尝试已被安全锁定。');
+    }
+
     const license = await prisma.license.findUnique({
       where: { licenseKey },
       include: { user: { select: { username: true } } },
@@ -291,6 +320,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'invalid_license_key',
       });
+      await recordLicenseFailure(licenseKey, ipAddress, 'invalid_license_key');
       recordSuspiciousActivity(ipAddress, 'bruteforce', hwid);
       return failure('INVALID', '许可证不存在或无效。');
     }
@@ -309,6 +339,7 @@ export async function POST(req: NextRequest) {
         success: false,
         reason: 'software_mismatch',
       });
+      await recordLicenseFailure(licenseKey, ipAddress, 'software_mismatch');
       return failure('MISMATCH', '许可证与软件不匹配。');
     }
 
@@ -434,6 +465,7 @@ export async function POST(req: NextRequest) {
           success: false,
           reason: 'hwid_mismatch',
         });
+        await recordLicenseFailure(licenseKey, ipAddress, 'hwid_mismatch');
         return failure('HWID_MISMATCH', '许可证已在另一台设备上绑定。');
       }
     }
@@ -475,10 +507,8 @@ export async function POST(req: NextRequest) {
       });
     });
 
-    const heartbeatSetting = await prisma.setting.findUnique({
-      where: { key: 'heartbeat_interval' },
-    });
-    const heartbeatInterval = heartbeatSetting ? parseInt(heartbeatSetting.value, 10) : 30;
+    const heartbeatInterval = await getEffectiveHeartbeatInterval();
+    recordLicenseSuccess(activeLicense.licenseKey);
 
     await logVerificationAttempt({
       ipAddress,
@@ -516,6 +546,16 @@ export async function POST(req: NextRequest) {
       orderBy: { versionCode: 'desc' },
     });
 
+    // 版本专属载荷取客户端实际运行版本，而非最高版本，否则旧客户端会拿到错位的偏移配置
+    const clientVersion = versionCode !== undefined
+      ? await prisma.softwareVersion.findFirst({
+          where: {
+            softwareName: isUniversal ? softwareName : activeLicense.softwareName,
+            versionCode,
+          },
+        })
+      : null;
+
     let hasUpdate = false;
     if (latestVer && versionCode !== undefined) {
       hasUpdate = latestVer.versionCode > versionCode;
@@ -532,11 +572,16 @@ export async function POST(req: NextRequest) {
       ? activeLicense.expirationDate.getTime()
       : 0;
 
-    const payload = encodeLicensePayload({
+    const effectiveCustomPayload = mergeCustomPayloads(
+      boundSoftware?.customPayload,
+      clientVersion?.customPayload,
+      activeLicense.customPayload
+    );
+
+    const payload = composeLicensePayload({
       issuedAt: Date.now(),
       expiresAt: expiresAtMs,
-      featureMask: 0xffffffff,
-      reserved: 0,
+      customPayload: effectiveCustomPayload,
     });
 
     const sealed = sealEnvelope(

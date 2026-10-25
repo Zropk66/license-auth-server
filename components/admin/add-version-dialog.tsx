@@ -19,6 +19,7 @@ export interface VersionItem {
   changelog: string;
   downloadUrl: string;
   fileHash?: string | null;
+  customPayload?: string | null;
   isForced: boolean;
   enabled: boolean;
 }
@@ -43,6 +44,7 @@ export default function AddVersionDialog({
   const [changelog, setChangelog] = useState('');
   const [downloadUrl, setDownloadUrl] = useState('');
   const [fileHash, setFileHash] = useState('');
+  const [customPayload, setCustomPayload] = useState('');
   const [isForced, setIsForced] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,6 +77,7 @@ export default function AddVersionDialog({
         setChangelog(versionToEdit.changelog);
         setDownloadUrl(versionToEdit.downloadUrl);
         setFileHash(versionToEdit.fileHash || '');
+        setCustomPayload(versionToEdit.customPayload || '');
         setIsForced(versionToEdit.isForced);
         setEnabled(versionToEdit.enabled);
       } else {
@@ -84,6 +87,7 @@ export default function AddVersionDialog({
         setChangelog('');
         setDownloadUrl('');
         setFileHash('');
+        setCustomPayload('');
         setIsForced(false);
         setEnabled(true);
       }
@@ -106,6 +110,7 @@ export default function AddVersionDialog({
         changelog: changelog.trim(),
         downloadUrl: downloadUrl.trim(),
         fileHash: fileHash.trim() || null,
+        customPayload: customPayload.trim() || null,
         isForced,
         enabled,
       };
@@ -243,6 +248,19 @@ export default function AddVersionDialog({
                 rows={3}
                 className="text-xs"
               />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs">版本专属自定义载荷 / JSON (选填)</Label>
+              <Textarea
+                placeholder='可填针对此特定版本下发的 JSON 数据，例如: {"LocalPlayer_tick": 288}'
+                value={customPayload}
+                onChange={(e) => setCustomPayload(e.target.value)}
+                disabled={isSubmitting}
+                rows={3}
+                className="text-xs font-mono"
+              />
+              <p className="text-[10px] text-muted-foreground">客户端为该版本时优先下发此载荷；留空则回退到软件默认载荷</p>
             </div>
 
             <div className="flex items-center justify-between border rounded-lg p-2.5">

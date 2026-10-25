@@ -25,6 +25,9 @@ const formSchema = z.object({
   }, {
     message: '心跳包间隔必须是大于等于 5 的正整数',
   }),
+  heartbeat_random_enabled: z.boolean().default(false),
+  heartbeat_interval_min: z.string().default('20'),
+  heartbeat_interval_max: z.string().default('40'),
   session_timeout: z.string().refine((val) => {
     const num = parseInt(val, 10);
     return !isNaN(num) && num >= 10;
@@ -33,11 +36,21 @@ const formSchema = z.object({
   }),
   enable_recaptcha: z.boolean(),
 }).refine((data) => {
-  const hb = parseInt(data.heartbeat_interval, 10);
+  if (!data.heartbeat_random_enabled) return true;
+  const min = parseInt(data.heartbeat_interval_min, 10);
+  const max = parseInt(data.heartbeat_interval_max, 10);
+  return !isNaN(min) && !isNaN(max) && min >= 5 && max >= min;
+}, {
+  message: '随机心跳区间需满足：最小秒数不低于 5，且最大秒数不小于最小秒数',
+  path: ['heartbeat_interval_max'],
+}).refine((data) => {
+  const hb = data.heartbeat_random_enabled
+    ? parseInt(data.heartbeat_interval_max || '40', 10)
+    : parseInt(data.heartbeat_interval, 10);
   const to = parseInt(data.session_timeout, 10);
   return to > hb;
 }, {
-  message: '会话超时阈值必须大于心跳包间隔',
+  message: '会话超时阈值必须大于心跳包间隔上限',
   path: ['session_timeout'],
 });
 
@@ -72,10 +85,15 @@ export default function SettingsPage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       heartbeat_interval: '30',
+      heartbeat_random_enabled: false,
+      heartbeat_interval_min: '20',
+      heartbeat_interval_max: '40',
       session_timeout: '300',
       enable_recaptcha: true,
     },
   });
+
+  const watchRandomHeartbeat = form.watch('heartbeat_random_enabled');
 
   useEffect(() => {
     async function fetchSettings() {
@@ -97,11 +115,17 @@ export default function SettingsPage() {
         }
 
         const heartbeat = data.find(s => s.key === 'heartbeat_interval')?.value || '30';
+        const randomEnabled = data.find(s => s.key === 'heartbeat_random_enabled')?.value === 'true';
+        const minVal = data.find(s => s.key === 'heartbeat_interval_min')?.value || '20';
+        const maxVal = data.find(s => s.key === 'heartbeat_interval_max')?.value || '40';
         const timeout = data.find(s => s.key === 'session_timeout')?.value || '300';
         const recaptcha = data.find(s => s.key === 'enable_recaptcha')?.value || 'true';
 
         form.reset({
           heartbeat_interval: heartbeat,
+          heartbeat_random_enabled: randomEnabled,
+          heartbeat_interval_min: minVal,
+          heartbeat_interval_max: maxVal,
           session_timeout: timeout,
           enable_recaptcha: recaptcha === 'true',
         });
@@ -130,6 +154,9 @@ export default function SettingsPage() {
         body: JSON.stringify({
           settings: [
             { key: 'heartbeat_interval', value: data.heartbeat_interval },
+            { key: 'heartbeat_random_enabled', value: String(data.heartbeat_random_enabled) },
+            { key: 'heartbeat_interval_min', value: data.heartbeat_interval_min || '20' },
+            { key: 'heartbeat_interval_max', value: data.heartbeat_interval_max || '40' },
             { key: 'session_timeout', value: data.session_timeout },
             { key: 'enable_recaptcha', value: String(data.enable_recaptcha) },
           ],
@@ -199,23 +226,76 @@ export default function SettingsPage() {
             ) : (
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm">随机心跳动态区间</FormLabel>
+                      <FormDescription className="text-xs">
+                        开启后服务端在每次验证与心跳时下发动态随机间隔，避免固定周期网络特征分析
+                      </FormDescription>
+                    </div>
                     <FormField
                       control={form.control}
-                      name="heartbeat_interval"
+                      name="heartbeat_random_enabled"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs">客户端心跳间隔 (秒)</FormLabel>
-                          <FormControl>
-                            <Input type="number" min="5" {...field} disabled={isSubmitting} className="h-8 text-xs" />
-                          </FormControl>
-                          <FormDescription className="text-[10px]">
-                            客户端发送心跳包的默认间隔时间。
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            disabled={isSubmitting}
+                          />
+                        </FormControl>
                       )}
                     />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {watchRandomHeartbeat ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <FormField
+                          control={form.control}
+                          name="heartbeat_interval_min"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">最小心跳秒数</FormLabel>
+                              <FormControl>
+                                <Input type="number" min="5" {...field} disabled={isSubmitting} className="h-8 text-xs font-mono" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="heartbeat_interval_max"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs">最大心跳秒数</FormLabel>
+                              <FormControl>
+                                <Input type="number" min="5" {...field} disabled={isSubmitting} className="h-8 text-xs font-mono" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    ) : (
+                      <FormField
+                        control={form.control}
+                        name="heartbeat_interval"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">客户端固定心跳间隔 (秒)</FormLabel>
+                            <FormControl>
+                              <Input type="number" min="5" {...field} disabled={isSubmitting} className="h-8 text-xs font-mono" />
+                            </FormControl>
+                            <FormDescription className="text-[10px]">
+                              客户端发送心跳包的固定间隔时间。
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
 
                     <FormField
                       control={form.control}
@@ -224,10 +304,10 @@ export default function SettingsPage() {
                         <FormItem>
                           <FormLabel className="text-xs">会话离线超时阈值 (秒)</FormLabel>
                           <FormControl>
-                            <Input type="number" min="10" {...field} disabled={isSubmitting} className="h-8 text-xs" />
+                            <Input type="number" min="10" {...field} disabled={isSubmitting} className="h-8 text-xs font-mono" />
                           </FormControl>
                           <FormDescription className="text-[10px]">
-                            判定客户端离线并清除会话的超时时间（须大于心跳间隔）。
+                            判定客户端离线并清除会话的超时时间（须大于心跳间隔上限）。
                           </FormDescription>
                           <FormMessage />
                         </FormItem>

@@ -24,7 +24,7 @@ import crypto from 'crypto';
 export const NONCE_SIZE = 16;
 export const SIGNATURE_SIZE = 64;
 export const BINDING_SIZE = 16;
-export const MAX_PAYLOAD_SIZE = 4096;
+export const MAX_PAYLOAD_SIZE = 65536;
 export const MAX_MACHINE_ID = 128;
 
 const DOMAIN_KEYSTREAM = 0x01;
@@ -283,29 +283,101 @@ export interface LicensePayload {
   issuedAt: number;
   /** 授权到期时间，0 表示永久 */
   expiresAt: number;
-  /** 功能位图，按位表示各模块是否可用 */
-  featureMask: number;
-  /** 保留字段，用于后续扩展而不改变布局 */
-  reserved: number;
+  /** 附加自定义载荷字符串 */
+  customPayload?: string | null;
 }
 
-export const LICENSE_PAYLOAD_SIZE = 8 + 8 + 4 + 4;
+export const LICENSE_PAYLOAD_SIZE = 8 + 8;
 
 export function encodeLicensePayload(payload: LicensePayload): Buffer {
   const buffer = Buffer.alloc(LICENSE_PAYLOAD_SIZE);
   buffer.writeBigUInt64LE(BigInt(payload.issuedAt), 0);
   buffer.writeBigUInt64LE(BigInt(payload.expiresAt), 8);
-  buffer.writeUInt32LE(payload.featureMask >>> 0, 16);
-  buffer.writeUInt32LE(payload.reserved >>> 0, 20);
+  return buffer;
+}
+
+export function composeLicensePayload(payload: LicensePayload): Buffer {
+  const headerBuf = encodeLicensePayload(payload);
+  if (!payload.customPayload || !payload.customPayload.trim()) {
+    return headerBuf;
+  }
+  const buffer = Buffer.concat([headerBuf, Buffer.from(payload.customPayload.trim(), 'utf8')]);
+  if (buffer.length > MAX_PAYLOAD_SIZE) {
+    throw new Error(`composed payload exceeds ${MAX_PAYLOAD_SIZE} bytes: ${buffer.length}`);
+  }
   return buffer;
 }
 
 export function decodeLicensePayload(buffer: Buffer): LicensePayload | null {
-  if (buffer.length !== LICENSE_PAYLOAD_SIZE) return null;
+  if (buffer.length < LICENSE_PAYLOAD_SIZE) return null;
+  const customPayload = buffer.length > LICENSE_PAYLOAD_SIZE
+    ? buffer.subarray(LICENSE_PAYLOAD_SIZE).toString('utf8')
+    : null;
   return {
     issuedAt: Number(buffer.readBigUInt64LE(0)),
     expiresAt: Number(buffer.readBigUInt64LE(8)),
-    featureMask: buffer.readUInt32LE(16),
-    reserved: buffer.readUInt32LE(20),
+    customPayload,
   };
+}
+
+/**
+ * 按优先级合并多级自定义载荷：软件默认 → 版本专属 → 卡密专属。
+ *
+ * 数组与标量载荷无法做字段级合并。若这类载荷出现在更靠后的层级，
+ * 说明是更高优先级的显式覆盖，应整体替换而非丢弃，否则管理员为
+ * 单个卡密配置的数组会被静默忽略。
+ */
+export function mergeCustomPayloads(
+  ...payloads: Array<string | null | undefined>
+): string | null {
+  const validStrings = payloads.filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+  if (validStrings.length === 0) return null;
+  if (validStrings.length === 1) return validStrings[0].trim();
+
+  let mergedObj: Record<string, unknown> = {};
+  let hasMergedObject = false;
+  let lastMergedIndex = -1;
+  let lastRawIndex = -1;
+  let lastRawString = '';
+
+  function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+    for (const key of Object.keys(source)) {
+      const srcVal = source[key];
+      const tgtVal = target[key];
+      if (
+        srcVal &&
+        typeof srcVal === 'object' &&
+        !Array.isArray(srcVal) &&
+        tgtVal &&
+        typeof tgtVal === 'object' &&
+        !Array.isArray(tgtVal)
+      ) {
+        target[key] = deepMerge({ ...(tgtVal as Record<string, unknown>) }, srcVal as Record<string, unknown>);
+      } else {
+        target[key] = srcVal;
+      }
+    }
+    return target;
+  }
+
+  for (let i = 0; i < validStrings.length; i += 1) {
+    const str = validStrings[i].trim();
+    try {
+      const parsed = JSON.parse(str);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        mergedObj = deepMerge(mergedObj, parsed as Record<string, unknown>);
+        hasMergedObject = true;
+        lastMergedIndex = i;
+      } else {
+        lastRawString = str;
+        lastRawIndex = i;
+      }
+    } catch {
+      lastRawString = str;
+      lastRawIndex = i;
+    }
+  }
+
+  if (!hasMergedObject) return lastRawString;
+  return lastRawIndex > lastMergedIndex ? lastRawString : JSON.stringify(mergedObj);
 }

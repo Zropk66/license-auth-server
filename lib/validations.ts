@@ -14,6 +14,29 @@ export const userLoginSchema = z.object({
   turnstileToken: z.string().nullish(),
 });
 
+// 封签载荷总长上限 65536 字节，前 16 字节为时间头，载荷可用空间须扣除
+export const MAX_CUSTOM_PAYLOAD_BYTES = 65536 - 16;
+
+const jsonPayloadSchema = z
+  .string()
+  .nullish()
+  .refine(
+    (val) => !val || Buffer.byteLength(val.trim(), 'utf8') <= MAX_CUSTOM_PAYLOAD_BYTES,
+    { message: `自定义载荷不能超过 ${MAX_CUSTOM_PAYLOAD_BYTES} 字节` }
+  )
+  .refine(
+    (val) => {
+      if (!val || val.trim() === '') return true;
+      try {
+        JSON.parse(val.trim());
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: '自定义载荷必须为合法 JSON 格式' }
+  );
+
 // License creation
 export const createLicenseSchema = z.object({
   userId: z.string().min(1),
@@ -23,6 +46,7 @@ export const createLicenseSchema = z.object({
   allowSelfUnbind: z.boolean().optional(),
   licenseType: z.enum(['fixed', 'duration']).default('fixed'),
   duration: z.number().int().positive().optional(),
+  customPayload: jsonPayloadSchema,
   note: z.string().max(500, '备注不能超过500字').nullish(),
 }).refine(
   (data) => {
@@ -44,6 +68,7 @@ export const batchGenerateLicenseSchema = z.object({
   allowSelfUnbind: z.boolean().default(true),
   prefix: z.string().max(20, '前缀不能超过20个字符').optional(),
   userId: z.string().optional(),
+  customPayload: jsonPayloadSchema,
   note: z.string().max(500, '备注不能超过500字').nullish(),
 }).refine(
   (data) => {
@@ -68,6 +93,7 @@ export const updateLicenseSchema = z.object({
   duration: z.number().int().positive().optional(),
   resetHwid: z.boolean().optional(),
   resethwid: z.boolean().optional(),
+  customPayload: jsonPayloadSchema,
   note: z.string().max(500, '备注不能超过500字').nullish(),
 }).refine(
   (data) => Object.keys(data).length > 0,
@@ -87,6 +113,7 @@ export const createSoftwareSchema = z.object({
   enabled: z.boolean().default(true),
   minVersionCode: z.number().int('最低版本号必须为整数').min(0, '最低版本号不能小于0').optional().nullable(),
   maxVersionCode: z.number().int('最高版本号必须为整数').min(0, '最高版本号不能小于0').optional().nullable(),
+  customPayload: jsonPayloadSchema,
 });
 
 // Software update
@@ -97,10 +124,32 @@ export const updateSoftwareSchema = z.object({
   enabled: z.boolean().optional(),
   minVersionCode: z.number().int('最低版本号必须为整数').min(0, '最低版本号不能小于0').optional().nullable(),
   maxVersionCode: z.number().int('最高版本号必须为整数').min(0, '最高版本号不能小于0').optional().nullable(),
+  customPayload: jsonPayloadSchema,
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'No fields to update' }
 );
+
+// Software version create
+export const createSoftwareVersionSchema = z.object({
+  softwareName: z.string().min(1, '请选择所属软件').max(100, '软件名称不能超过100个字符'),
+  version: z.string().min(1, '请输入版本号').max(50, '版本号不能超过50个字符'),
+  versionCode: z.coerce.number().int('版本代码必须为整数').min(0, '版本代码不能小于0'),
+  changelog: z.string().max(10000, '更新日志过长').optional().nullable(),
+  downloadUrl: z.string().max(2000, '下载地址过长').optional().nullable(),
+  fileHash: z.string().max(200, '文件校验值过长').optional().nullable(),
+  isForced: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  customPayload: jsonPayloadSchema,
+});
+
+// Software version update
+export const updateSoftwareVersionSchema = createSoftwareVersionSchema
+  .partial()
+  .refine(
+    (data) => Object.keys(data).length > 0,
+    { message: '没有需要更新的字段' }
+  );
 
 // Manager creation
 export const createManagerSchema = z.object({
@@ -124,6 +173,9 @@ export const ALLOWED_SETTING_KEYS = [
   'enforce_strong_password',
   'session_timeout',
   'heartbeat_interval',
+  'heartbeat_random_enabled',
+  'heartbeat_interval_min',
+  'heartbeat_interval_max',
   'unbind_enabled',
   'unbind_default_allow',
   'unbind_max_per_month',
@@ -138,9 +190,14 @@ export const ALLOWED_SETTING_KEYS = [
   'rate_limit_verify_window_min',
   'rate_limit_heartbeat_max',
   'rate_limit_heartbeat_window_min',
+  'log_cleanup_mode',
   'log_cleanup_verify_days',
   'log_cleanup_audit_days',
+  'log_cleanup_max_size_mb',
   'log_cleanup_auto_enabled',
+  'risk_license_fail_max',
+  'risk_license_lock_min',
+  'risk_bogus_hwid_block',
 ] as const;
 
 export const settingsUpdateSchema = z.object({

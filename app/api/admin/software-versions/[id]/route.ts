@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { logAction } from '@/lib/audit';
+import { updateSoftwareVersionSchema } from '@/lib/validations';
 
 export async function PATCH(
   req: NextRequest,
@@ -16,15 +17,27 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
-    const dataToUpdate: any = {};
-    if (body.softwareName !== undefined) dataToUpdate.softwareName = body.softwareName.trim();
-    if (body.version !== undefined) dataToUpdate.version = body.version.trim();
-    if (body.versionCode !== undefined) dataToUpdate.versionCode = parseInt(body.versionCode, 10);
-    if (body.changelog !== undefined) dataToUpdate.changelog = body.changelog.trim();
-    if (body.downloadUrl !== undefined) dataToUpdate.downloadUrl = body.downloadUrl ? body.downloadUrl.trim() : '';
-    if (body.fileHash !== undefined) dataToUpdate.fileHash = body.fileHash ? body.fileHash.trim() : null;
-    if (body.isForced !== undefined) dataToUpdate.isForced = Boolean(body.isForced);
-    if (body.enabled !== undefined) dataToUpdate.enabled = Boolean(body.enabled);
+    const parseResult = updateSoftwareVersionSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: parseResult.error.issues[0]?.message || '参数有误' },
+        { status: 400 }
+      );
+    }
+
+    const parsed = parseResult.data;
+    const dataToUpdate: Record<string, unknown> = {};
+    if (parsed.softwareName !== undefined) dataToUpdate.softwareName = parsed.softwareName.trim();
+    if (parsed.version !== undefined) dataToUpdate.version = parsed.version.trim();
+    if (parsed.versionCode !== undefined) dataToUpdate.versionCode = parsed.versionCode;
+    if (parsed.changelog !== undefined) dataToUpdate.changelog = parsed.changelog?.trim() || '';
+    if (parsed.downloadUrl !== undefined) dataToUpdate.downloadUrl = parsed.downloadUrl ? parsed.downloadUrl.trim() : '';
+    if (parsed.fileHash !== undefined) dataToUpdate.fileHash = parsed.fileHash ? parsed.fileHash.trim() : null;
+    if (parsed.isForced !== undefined) dataToUpdate.isForced = Boolean(parsed.isForced);
+    if (parsed.enabled !== undefined) dataToUpdate.enabled = Boolean(parsed.enabled);
+    if (parsed.customPayload !== undefined) {
+      dataToUpdate.customPayload = parsed.customPayload ? parsed.customPayload.trim() : null;
+    }
 
     const updated = await prisma.softwareVersion.update({
       where: { id },

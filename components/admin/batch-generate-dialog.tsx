@@ -67,6 +67,7 @@ export default function BatchGenerateDialog({
   const [hardwareBindingEnabled, setHardwareBindingEnabled] = useState(true);
   const [allowSelfUnbind, setAllowSelfUnbind] = useState(true);
   const [userId, setUserId] = useState<string>('default');
+  const [customPayload, setCustomPayload] = useState('');
   const [note, setNote] = useState('');
 
   useEffect(() => {
@@ -126,6 +127,7 @@ export default function BatchGenerateDialog({
         licenseType,
         hardwareBindingEnabled,
         allowSelfUnbind,
+        customPayload: customPayload.trim() || undefined,
         note: note ? note.trim() : undefined,
       };
 
@@ -367,6 +369,19 @@ export default function BatchGenerateDialog({
                   />
                 </div>
               )}
+
+              <div className="space-y-1.5 pt-1">
+                <Label htmlFor="customPayload" className="text-xs">批量自定义载荷 / JSON (选填)</Label>
+                <Textarea
+                  id="customPayload"
+                  placeholder='留空则自动继承所属软件默认配置。填入则统一分配此载荷，例如: {"tier": "pro"}'
+                  value={customPayload}
+                  onChange={(e) => setCustomPayload(e.target.value)}
+                  rows={3}
+                  className="font-mono text-xs"
+                />
+                <p className="text-[10px] text-muted-foreground">该批生成的所有卡密将下发此内容；留空则随软件默认配置</p>
+              </div>
 
               <div className="space-y-1.5 pt-1">
                 <Label htmlFor="note" className="text-xs">批次备注 (选填)</Label>

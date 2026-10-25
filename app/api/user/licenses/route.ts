@@ -17,11 +17,35 @@ export async function GET(req: NextRequest) {
     const where = { userId: payload.id };
     const orderBy = { createdAt: 'desc' as const };
 
-    // 未提供 page 参数时返回全部数据（数组格式），保持前端兼容
+    // 自定义载荷含偏移量与特征码等密钥材料，只应经封签信封下发，不能明文出现在用户接口
+    const select = {
+      id: true,
+      licenseKey: true,
+      userId: true,
+      softwareName: true,
+      expirationDate: true,
+      hwid: true,
+      deviceName: true,
+      hardwareBindingEnabled: true,
+      allowSelfUnbind: true,
+      status: true,
+      licenseType: true,
+      duration: true,
+      activatedAt: true,
+      createdAt: true,
+      updatedAt: true,
+      lastUnboundAt: true,
+      monthlyUnbindCount: true,
+      unbindCountMonth: true,
+      extraUnbindCount: true,
+    } as const;
+
+    // 未提供 page 参数时返回全部数据，保持前端兼容
     if (pageParam === null) {
       const licenses = await prisma.license.findMany({
         where,
         orderBy,
+        select,
       });
       return NextResponse.json(licenses);
     }
@@ -43,6 +67,7 @@ export async function GET(req: NextRequest) {
       prisma.license.findMany({
         where,
         orderBy,
+        select,
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

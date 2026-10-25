@@ -32,6 +32,7 @@ function mapLicense(license: LicenseWithRelations) {
     monthlyUnbindCount: license.monthlyUnbindCount,
     extraUnbindCount: license.extraUnbindCount,
     note: license.note,
+    customPayload: license.customPayload,
     status: license.status,
     licenseType: license.licenseType,
     duration: license.duration,
@@ -130,7 +131,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const { userId, softwareName, expirationDate, hardwareBindingEnabled, allowSelfUnbind, licenseType, duration, note } = parseResult.data;
+    const { userId, softwareName, expirationDate, hardwareBindingEnabled, allowSelfUnbind, licenseType, duration, note, customPayload } = parseResult.data;
 
     // 验证用户是否存在
     const user = await prisma.user.findUnique({
@@ -169,6 +170,7 @@ export async function POST(req: NextRequest) {
             duration: isDuration ? duration! : null,
             activatedAt: isDuration ? null : new Date(),
             note: note || null,
+            customPayload: customPayload ? customPayload.trim() : null,
             createdById: authResult.payload.id,
           },
           include: licenseInclude,
@@ -196,22 +198,7 @@ export async function POST(req: NextRequest) {
       targetId: license.id,
       details: { softwareName, licenseType, userId },
     });
-    return NextResponse.json({
-      id: license.id,
-      licenseKey: license.licenseKey,
-      userId: license.userId,
-      username: license.user.username,
-      softwareName: license.softwareName,
-      expirationDate: license.expirationDate,
-      hardwareBindingEnabled: license.hardwareBindingEnabled,
-      hwid: license.hwid,
-      status: license.status,
-      licenseType: license.licenseType,
-      duration: license.duration,
-      activatedAt: license.activatedAt,
-      createdAt: license.createdAt,
-      createdBy: license.createdBy?.username || null,
-    });
+    return NextResponse.json(mapLicense(license));
   } catch (error) {
     console.error('Error creating license:', error);
     return NextResponse.json(

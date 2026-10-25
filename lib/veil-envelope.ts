@@ -30,7 +30,7 @@ export const TAG_SIZE = 16;
 export const SIGNATURE_SIZE = 64;
 export const STAMP_SIZE = 8;
 export const MAX_HWID = 127;
-export const MAX_PLAINTEXT = 4096;
+export const MAX_PLAINTEXT = 65536;
 export const MAX_EVIDENCE = 1024;
 export const DEFAULT_DOMAIN = 0x01;
 
