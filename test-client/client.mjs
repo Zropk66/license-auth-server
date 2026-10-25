@@ -471,15 +471,16 @@ export class LicenseClient {
       }
 
       const respJson = await resp.json();
-      if (!resp.ok || !respJson.success) {
-        const failureBody = respJson.data || respJson;
-        this.log('veil 授权拒绝:', failureBody.message || failureBody.code || failureBody);
-        return { data: respJson, error: failureBody.error || 'veil_rejected' };
+      // 成功响应外层是 { data, signature }，失败响应仍是扁平的 { success:false, code }
+      const body = respJson.data || respJson;
+
+      if (!resp.ok || body.success !== true) {
+        this.log('veil 授权拒绝:', body.message || body.code || body);
+        return { data: body, error: body.error || 'veil_rejected' };
       }
 
       // 外层签名覆盖 success、status、expirationDate 等明文字段，
       // 验签失败说明响应被改写，不能继续采信任何内容
-      const body = respJson.data || respJson;
       if (respJson.signature && this.authPublicKey) {
         const authenticated = crypto.verify(
           null,
