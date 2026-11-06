@@ -37,6 +37,11 @@ export async function POST(req: NextRequest) {
     return authResult;
   }
 
+  // node:vm is not a security boundary, so authoring hook code equals server code execution
+  if (authResult.payload.role !== 'owner') {
+    return NextResponse.json({ error: '只有超级管理员可以管理钩子脚本' }, { status: 403 });
+  }
+
   try {
     const body = await req.json();
     const parseResult = hookScriptSchema.safeParse(body);

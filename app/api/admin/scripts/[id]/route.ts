@@ -55,6 +55,9 @@ export async function PATCH(
   if (!('payload' in authResult)) {
     return authResult;
   }
+  if (authResult.payload.role !== 'owner') {
+    return NextResponse.json({ error: '只有超级管理员可以管理钩子脚本' }, { status: 403 });
+  }
 
   const { id } = await params;
   try {
@@ -146,6 +149,9 @@ export async function DELETE(
   const authResult = await validateAdminAuth(req);
   if (!('payload' in authResult)) {
     return authResult;
+  }
+  if (authResult.payload.role !== 'owner') {
+    return NextResponse.json({ error: '只有超级管理员可以管理钩子脚本' }, { status: 403 });
   }
 
   const { id } = await params;

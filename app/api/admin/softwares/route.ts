@@ -102,6 +102,11 @@ export async function POST(req: NextRequest) {
     const { name, code, description, enabled, minVersionCode, maxVersionCode, customPayload, hookScriptId, hookScript } = parseResult.data;
     const trimmedName = name.trim();
 
+    // node:vm is not a security boundary, so authoring hook code equals server code execution
+    if (hookScript?.trim() && authResult.payload.role !== 'owner') {
+      return NextResponse.json({ error: '只有超级管理员可以修改钩子脚本' }, { status: 403 });
+    }
+
     // 检查名称唯一性
     const existing = await prisma.software.findUnique({
       where: { name: trimmedName },
