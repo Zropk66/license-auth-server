@@ -277,9 +277,9 @@ export default function ApiDocsPage() {
 
             <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
               <span className="font-semibold text-foreground block">典型脚本编写示例</span>
-              <div className="bg-background/80 p-3 rounded border font-mono text-xs leading-relaxed overflow-x-auto space-y-3">
+              <div className="bg-background/80 p-3 rounded border font-mono text-xs leading-relaxed overflow-x-auto whitespace-pre space-y-3">
                 <div>
-                  <span className="text-muted-foreground block">// 示例：依据协议通道或版本号下发动态功能开关</span>
+                  <span className="text-muted-foreground block">{'// 示例：依据协议通道或版本号下发动态功能开关'}</span>
                   <span className="text-blue-500">payload</span>.features = [<span className="text-green-500">&apos;basic_export&apos;</span>];{'\n'}
                   <span className="text-purple-500">if</span> (req.protocol === <span className="text-green-500">&apos;veil&apos;</span> || (req.versionCode && req.versionCode &gt;= <span className="text-amber-500">200</span>)) {'{'}{'\n'}
                   {'  '}<span className="text-blue-500">payload</span>.features.push(<span className="text-green-500">&apos;hardware_accel&apos;</span>, <span className="text-green-500">&apos;cloud_render&apos;</span>);{'\n'}
@@ -287,7 +287,7 @@ export default function ApiDocsPage() {
                   {'}'}
                 </div>
                 <div>
-                  <span className="text-muted-foreground block">// 示例：自定义前置规则阻断</span>
+                  <span className="text-muted-foreground block">{'// 示例：自定义前置规则阻断'}</span>
                   <span className="text-purple-500">if</span> (req.ipAddress && req.ipAddress.startsWith(<span className="text-green-500">&apos;10.&apos;</span>)) {'{'}{'\n'}
                   {'  '}<span className="text-red-500">reject</span>(<span className="text-green-500">&apos;禁止使用内网测试地址接入&apos;</span>);{'\n'}
                   {'}'}
