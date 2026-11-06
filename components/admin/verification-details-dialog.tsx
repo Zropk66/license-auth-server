@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { MaskedText } from '@/components/ui/masked-text';
+import AddBlacklistDialog, { BlacklistEntry } from '@/components/admin/add-blacklist-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
@@ -131,7 +132,6 @@ export default function VerificationDetailsDialog({
   const router = useRouter();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [isBlacklisting, setIsBlacklisting] = useState(false);
 
   if (!log) return null;
 
@@ -201,37 +201,21 @@ export default function VerificationDetailsDialog({
     }
   };
 
-  const handleQuickBlacklist = async (type: 'ip' | 'hwid', value: string) => {
-    setIsBlacklisting(true);
-    try {
-      const res = await fetch('/api/admin/blacklist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          value,
-          reason: `从验证日志快速拉黑 (${log.reason || '拦截记录'})`,
-          days: 0,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '添加黑名单失败');
-      }
-      toast({
-        title: '拉黑成功',
-        description: `已将 ${type === 'ip' ? 'IP' : 'HWID'}「${value}」永久拉入黑名单`,
-      });
-      onBlacklistAdded?.();
-    } catch (err: any) {
-      toast({
-        title: '拉黑失败',
-        description: err.message || '操作失败',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsBlacklisting(false);
-    }
+  /* 快捷拉黑复用 AddBlacklistDialog：预填类型与目标，管理员可在面板内调整时长与原因 */
+  const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false);
+  const [quickBlacklistPreset, setQuickBlacklistPreset] = useState<BlacklistEntry | null>(null);
+
+  const openQuickBlacklist = (type: 'ip' | 'hwid', value: string) => {
+    setQuickBlacklistPreset({
+      id: '',
+      type,
+      value,
+      reason: `从验证日志快速拉黑 (${log.reason || '拦截记录'})`,
+      isAuto: false,
+      expiresAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    setBlacklistDialogOpen(true);
   };
 
   const copyDiagnosticJson = () => {
@@ -418,8 +402,7 @@ export default function VerificationDetailsDialog({
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs px-2 gap-1 text-destructive hover:bg-destructive/10 border-destructive/20"
-                    onClick={() => handleQuickBlacklist('ip', log.ipAddress)}
-                    disabled={isBlacklisting}
+                    onClick={() => openQuickBlacklist('ip', log.ipAddress)}
                   >
                     <Ban className="h-3 w-3" />
                     拉黑 IP
@@ -459,8 +442,7 @@ export default function VerificationDetailsDialog({
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs px-2 gap-1 text-destructive hover:bg-destructive/10 border-destructive/20"
-                      onClick={() => handleQuickBlacklist('hwid', displayHwid!)}
-                      disabled={isBlacklisting}
+                      onClick={() => openQuickBlacklist('hwid', displayHwid!)}
                     >
                       <Ban className="h-3 w-3" />
                       拉黑 HWID
@@ -495,6 +477,17 @@ export default function VerificationDetailsDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* 快捷拉黑复用统一封禁面板：含二次确认语、预设天数与自定义到期时间选择 */}
+      <AddBlacklistDialog
+        open={blacklistDialogOpen}
+        onOpenChange={setBlacklistDialogOpen}
+        onSuccess={() => {
+          setQuickBlacklistPreset(null);
+          onBlacklistAdded?.();
+        }}
+        entryToEdit={quickBlacklistPreset}
+      />
     </Dialog>
   );
 }

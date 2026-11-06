@@ -45,14 +45,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { type, value, reason, days } = body;
+    const { type, value, reason, days, customAt } = body;
 
     if (!type || !value) {
       return NextResponse.json({ error: 'Type and Value are required' }, { status: 400 });
     }
 
+    /* customAt 优先：快捷拉黑面板指定的精确到期时间；其次按天数；均无则永久 */
     let expiresAt: Date | null = null;
-    if (days && Number(days) > 0) {
+    if (customAt) {
+      const custom = new Date(customAt);
+      if (!isNaN(custom.getTime()) && custom.getTime() > Date.now()) {
+        expiresAt = custom;
+      }
+    } else if (days && Number(days) > 0) {
       expiresAt = new Date(Date.now() + Number(days) * 24 * 60 * 60 * 1000);
     }
 

@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { id, reason, days } = body;
+    const { id, reason, days, customAt } = body;
 
     if (!id) {
       return NextResponse.json({ error: '缺少条目 ID' }, { status: 400 });
@@ -26,13 +26,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '黑名单条目不存在' }, { status: 404 });
     }
 
-    let expiresAt: Date | null = null;
-    if (days !== undefined) {
-      if (days !== null && Number(days) > 0) {
-        expiresAt = new Date(Date.now() + Number(days) * 24 * 60 * 60 * 1000);
+    /* customAt 优先于 days；两者均未提供时保持原过期时间不变 */
+    let expiresAt: Date | null = existing.expiresAt;
+    if (customAt) {
+      const custom = new Date(customAt);
+      if (!isNaN(custom.getTime()) && custom.getTime() > Date.now()) {
+        expiresAt = custom;
       }
-    } else {
-      expiresAt = existing.expiresAt;
+    } else if (days !== undefined) {
+      expiresAt = days !== null && Number(days) > 0
+        ? new Date(Date.now() + Number(days) * 24 * 60 * 60 * 1000)
+        : null;
     }
 
     const updated = await prisma.blacklist.update({

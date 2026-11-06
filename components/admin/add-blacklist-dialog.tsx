@@ -6,7 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CalendarIcon, Loader2 } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
 export interface BlacklistEntry {
@@ -40,12 +43,14 @@ export default function AddBlacklistDialog({
   entryToEdit,
 }: AddBlacklistDialogProps) {
   const { toast } = useToast();
-  const isEdit = Boolean(entryToEdit);
+  /* entryToEdit 有 id 为编辑既有条目；无 id 为快捷拉黑预填创建，目标仍可修改 */
+  const isEdit = Boolean(entryToEdit?.id);
 
   const [type, setType] = useState<'ip' | 'hwid'>('ip');
   const [value, setValue] = useState('');
   const [reason, setReason] = useState('');
-  const [duration, setDuration] = useState('0'); // 0 = 永久
+  const [duration, setDuration] = useState('0'); // 0 = 永久, custom = 自定义到期
+  const [customExpiry, setCustomExpiry] = useState<Date | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -74,20 +79,36 @@ export default function AddBlacklistDialog({
       return;
     }
 
+    let customAtIso: string | null = null;
+    if (duration === 'custom') {
+      if (!customExpiry || customExpiry.getTime() <= Date.now()) {
+        toast({
+          title: '自定义到期时间无效',
+          description: '请选择一个未来的时间点',
+          variant: 'destructive',
+        });
+        return;
+      }
+      customAtIso = customExpiry.toISOString();
+    }
+
     setIsSubmitting(true);
     try {
       const url = isEdit ? '/api/admin/blacklist/update' : '/api/admin/blacklist';
+      const days = duration === 'custom' ? 0 : parseInt(duration, 10);
       const payload = isEdit
         ? {
             id: entryToEdit!.id,
             reason: reason.trim() || '管理员手动封禁',
-            days: parseInt(duration, 10),
+            days,
+            customAt: customAtIso,
           }
         : {
             type,
             value: value.trim(),
             reason: reason.trim() || '管理员手动封禁',
-            days: parseInt(duration, 10),
+            days,
+            customAt: customAtIso,
           };
 
       const res = await fetch(url, {
@@ -104,8 +125,8 @@ export default function AddBlacklistDialog({
       toast({
         title: isEdit ? '已更新' : '成功',
         description: isEdit
-          ? `已更新 [${entryToEdit!.value}] 的封禁配置`
-          : `已成功将 ${value} 加入黑名单`,
+          ? `已更新 [${entryToEdit!.value.length > 28 ? `${entryToEdit!.value.slice(0, 16)}...${entryToEdit!.value.slice(-8)}` : entryToEdit!.value}] 的封禁配置`
+          : `已成功将 ${value.length > 28 ? `${value.slice(0, 16)}...${value.slice(-8)}` : value} 加入黑名单`,
       });
 
       onOpenChange(false);
@@ -127,9 +148,9 @@ export default function AddBlacklistDialog({
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? '编辑封禁条目' : '添加黑名单封禁'}</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="break-all">
               {isEdit
-                ? `调整 [${entryToEdit?.value}] 的封禁原因与过期时间，封禁目标不可修改。`
+                ? `调整 [${entryToEdit && entryToEdit.value.length > 28 ? `${entryToEdit.value.slice(0, 16)}...${entryToEdit.value.slice(-8)}` : entryToEdit?.value}] 的封禁原因与过期时间，封禁目标不可修改。`
                 : '封禁指定的 IP 地址或机器码 (HWID)，被封禁目标将无法请求验证与登录。'}
             </DialogDescription>
           </DialogHeader>
@@ -161,7 +182,13 @@ export default function AddBlacklistDialog({
 
             <div className="grid gap-2">
               <Label>封禁时长</Label>
-              <Select value={duration} onValueChange={setDuration}>
+              <Select
+                value={duration}
+                onValueChange={(val) => {
+                  setDuration(val);
+                  if (val !== 'custom') setCustomExpiry(undefined);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -171,9 +198,79 @@ export default function AddBlacklistDialog({
                   <SelectItem value="7">7 天 (1周)</SelectItem>
                   <SelectItem value="30">30 天 (1个月)</SelectItem>
                   <SelectItem value="90">90 天 (3个月)</SelectItem>
+                  <SelectItem value="custom">自定义到期时间</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {duration === 'custom' && (
+              <div className="grid gap-2">
+                <Label>到期时间</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="justify-start text-left font-mono text-xs h-9"
+                    >
+                      <CalendarIcon className="h-3.5 w-3.5 opacity-70" />
+                      {customExpiry ? formatDate(customExpiry) : '选择到期时间'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={customExpiry}
+                      onSelect={(date) => {
+                        if (!date) return;
+                        const d = new Date(date);
+                        d.setHours(new Date().getHours() + 1, 0, 0, 0);
+                        setCustomExpiry(d);
+                      }}
+                      disabled={(date) => date.getTime() < Date.now() - 24 * 60 * 60 * 1000}
+                      initialFocus
+                    />
+                    {customExpiry && (
+                      <div className="border-t p-2 flex items-center gap-1.5">
+                        <select
+                          value={String(customExpiry.getHours()).padStart(2, '0')}
+                          onChange={(e) => {
+                            const d = new Date(customExpiry);
+                            d.setHours(parseInt(e.target.value, 10));
+                            setCustomExpiry(d);
+                          }}
+                          className="border rounded p-1 bg-background text-foreground text-xs w-14 text-center"
+                        >
+                          {Array.from({ length: 24 }, (_, i) => {
+                            const val = String(i).padStart(2, '0');
+                            return <option key={val} value={val}>{val} 时</option>;
+                          })}
+                        </select>
+                        <select
+                          value={String(customExpiry.getMinutes()).padStart(2, '0')}
+                          onChange={(e) => {
+                            const d = new Date(customExpiry);
+                            d.setMinutes(parseInt(e.target.value, 10));
+                            setCustomExpiry(d);
+                          }}
+                          className="border rounded p-1 bg-background text-foreground text-xs w-14 text-center"
+                        >
+                          {Array.from({ length: 60 }, (_, i) => {
+                            const val = String(i).padStart(2, '0');
+                            return <option key={val} value={val}>{val} 分</option>;
+                          })}
+                        </select>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                {customExpiry && (
+                  <p className="text-[11px] text-muted-foreground">
+                    将封禁至 {formatDate(customExpiry)}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="grid gap-2">
               <Label>封禁原因 (选填)</Label>

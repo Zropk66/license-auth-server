@@ -53,10 +53,14 @@ export default function BlacklistPage() {
     fetchBlacklist();
   }, [typeFilter]);
 
+  /* 长值截断展示：头 16 + 尾 8，防止确认弹窗与 Toast 溢出 */
+  const truncateValue = (v: string) =>
+    v.length > 28 ? `${v.slice(0, 16)}...${v.slice(-8)}` : v;
+
   const handleDelete = async (id: string, value: string) => {
     const confirmed = await confirm({
       title: '解除封禁',
-      description: `确定要将 [${value}] 从黑名单中移除并解封吗？`,
+      description: `确定要将 [${truncateValue(value)}] 从黑名单中移除并解封吗？`,
       confirmText: '确定解封',
     });
     if (!confirmed) return;
@@ -71,7 +75,7 @@ export default function BlacklistPage() {
 
       toast({
         title: '已解除封禁',
-        description: `已成功解封 ${value}`,
+        description: `已成功解封 ${truncateValue(value)}`,
       });
       fetchBlacklist();
     } catch (err: any) {
@@ -184,8 +188,8 @@ export default function BlacklistPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md border">
-              <Table>
+            <div className="rounded-md border overflow-x-auto">
+              <Table className="min-w-[720px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[100px]">类型</TableHead>
@@ -220,7 +224,10 @@ export default function BlacklistPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+                          <code
+                            className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded block max-w-[220px] truncate"
+                            title={item.value}
+                          >
                             {item.value}
                           </code>
                         </TableCell>
