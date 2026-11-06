@@ -224,9 +224,9 @@ export default function BlacklistPage() {
                             {item.type === 'ip' ? 'IP 地址' : '机器码'}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1 min-w-0">
-                            <MaskedText value={item.value} head={6} tail={4} />
+                        <TableCell className="w-[240px]">
+                          <div className="max-w-[240px]">
+                            <MaskedText value={item.value} head={6} tail={4} className="max-w-[236px] w-full" />
                           </div>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-xs truncate" title={item.reason || ''}>

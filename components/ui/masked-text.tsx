@@ -153,7 +153,7 @@ export function MaskedText({
           role="button"
           tabIndex={0}
           style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
-          className={`inline-flex items-center cursor-pointer select-none transition-all duration-150 px-1 py-0.5 rounded max-w-full overflow-hidden ${
+          className={`flex items-center cursor-pointer select-none transition-all duration-150 px-1 py-0.5 rounded max-w-full overflow-hidden ${
             copied
               ? 'text-green-600 bg-green-500/10 font-semibold dark:text-green-400 dark:bg-green-500/20'
               : isPressing
@@ -183,9 +183,6 @@ export function MaskedText({
           onTouchCancel={handleEnd}
         >
           <span className="truncate">{revealed ? value : maskValue(value, head, tail)}</span>
-          {revealed && value.length > head + tail + 8 && (
-            <span className="text-muted-foreground/60 font-sans text-[10px] ml-0.5 shrink-0">…已截断</span>
-          )}
           <AnimatePresence>
             {copied && (
               <motion.span
