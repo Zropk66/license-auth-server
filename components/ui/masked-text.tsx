@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Check } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+
 export interface MaskedTextProps {
   value: string;
   /** Number of characters to keep visible at the start */
@@ -258,20 +258,30 @@ export function MaskedText({
           onTouchEnd={handleEnd}
           onTouchCancel={handleEnd}
         >
-          <span className="truncate">{revealed ? value : maskValue(value, head, tail)}</span>
-          <AnimatePresence>
-            {copied && (
-              <motion.span
-                initial={{ opacity: 0, scale: 0.5, width: 0 }}
-                animate={{ opacity: 1, scale: 1, width: 'auto' }}
-                exit={{ opacity: 0, scale: 0.5, width: 0 }}
-                transition={{ duration: 0.15 }}
-                className="inline-flex items-center ml-1 text-green-600 dark:text-green-400"
-              >
-                <Check className="h-3 w-3" />
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {/* 脱敏态与展开态叠放于同一网格单元：宽度恒取脱敏态，展开不改变组件尺寸 */}
+          <span className="grid">
+            <span
+              className={`truncate transition-opacity duration-150 ${
+                revealed ? 'opacity-0' : 'opacity-100'
+              } col-start-1 row-start-1`}
+            >
+              {maskValue(value, head, tail)}
+            </span>
+            <span
+              className={`truncate transition-opacity duration-150 ${
+                revealed ? 'opacity-100' : 'opacity-0'
+              } col-start-1 row-start-1`}
+            >
+              {value}
+            </span>
+          </span>
+          <Check
+            className={`h-3 w-3 shrink-0 ml-1 transition-all duration-150 ${
+              copied
+                ? 'text-green-600 dark:text-green-400 opacity-100 scale-100 w-3'
+                : 'opacity-0 scale-50 w-0'
+            }`}
+          />
         </span>
       </TooltipTrigger>
       <TooltipContent
