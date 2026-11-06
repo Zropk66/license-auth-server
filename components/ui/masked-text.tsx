@@ -51,43 +51,46 @@ export function MaskedText({
 
   const copyToClipboard = useCallback(async () => {
     if (!value || value === '无' || value === '-') return;
+    /* clipboard API 无用户激活或权限被拒时静默挂起，先试 execCommand，更可靠 */
     try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const textArea = document.createElement('textarea');
-        textArea.value = value;
-        textArea.style.position = 'fixed';
-        textArea.style.opacity = '0';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-      }
-
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-
-      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-        try {
-          navigator.vibrate(40);
-        } catch {
-          /* 震动反馈失败可忽略 */
-        }
-      }
-
-      toast({
-        title: '已复制完整内容到剪贴板',
-        description: value.length > 36 ? `${value.slice(0, 16)}...${value.slice(-12)}` : value,
-      });
+      const textArea = document.createElement('textarea');
+      textArea.value = value;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (!ok) throw new Error('execCommand failed');
     } catch {
-      toast({
-        title: '复制失败',
-        description: '请手动复制完整文本',
-        variant: 'destructive',
-      });
+      try {
+        await navigator.clipboard.writeText(value);
+      } catch {
+        toast({
+          title: '复制失败',
+          description: '请手动复制完整文本',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
+
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+
+    if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(40);
+      } catch {
+        /* 震动反馈失败可忽略 */
+      }
+    }
+
+    toast({
+      title: '已复制完整内容到剪贴板',
+      description: value.length > 36 ? `${value.slice(0, 16)}...${value.slice(-12)}` : value,
+    });
   }, [value, toast]);
 
   const handleStart = useCallback(
@@ -206,7 +209,23 @@ export function MaskedText({
               transition={{ duration: 0.5, ease: 'easeOut' }}
             />
           )}
-          <span className="truncate">{revealed ? value : maskValue(value, head, tail)}</span>
+          {/* 脱敏态与展开态叠放同一网格：宽度恒由脱敏态决定，切换零尺寸变化 */}
+          <span className="grid">
+            <span
+              className={`truncate transition-opacity duration-150 col-start-1 row-start-1 ${
+                revealed ? 'opacity-0' : 'opacity-100'
+              }`}
+            >
+              {maskValue(value, head, tail)}
+            </span>
+            <span
+              className={`truncate transition-opacity duration-150 col-start-1 row-start-1 ${
+                revealed ? 'opacity-100' : 'opacity-0'
+              }`}
+            >
+              {value}
+            </span>
+          </span>
           <AnimatePresence>
             {copied && (
               <motion.span
