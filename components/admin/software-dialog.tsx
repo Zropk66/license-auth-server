@@ -180,7 +180,7 @@ export default function SoftwareDialog({
                 <TabsTrigger value="advanced" className="text-xs font-medium">扩展载荷</TabsTrigger>
               </TabsList>
 
-              <div className="h-[275px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+              <div className="overflow-y-auto pr-1 max-h-[65vh] [scrollbar-gutter:stable]">
                 <TabsContent value="basic" className="space-y-3 mt-0 focus-visible:outline-none">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -292,15 +292,15 @@ export default function SoftwareDialog({
                   </div>
                 </TabsContent>
 
-                <TabsContent value="advanced" className="space-y-3 mt-0 focus-visible:outline-none flex flex-col h-full">
-                  <div className="space-y-1.5 flex-1 flex flex-col">
+                <TabsContent value="advanced" className="space-y-3 mt-0 focus-visible:outline-none">
+                  <div className="space-y-1.5 flex flex-col">
                     <Label className="text-xs font-medium">软件级自定义数据载荷</Label>
                     <Textarea
                       placeholder={`{\n  "feature_flags": ["pro", "ai_toolkit"],\n  "max_concurrency": 5\n}`}
                       value={customPayload}
                       onChange={(e) => setCustomPayload(e.target.value)}
                       disabled={isSubmitting}
-                      className="font-mono text-xs resize-none flex-1 min-h-[190px] leading-relaxed"
+                      className="font-mono text-xs resize-none h-[230px] leading-relaxed"
                     />
                     <p className="text-[10px] text-muted-foreground">
                       合法 JSON。客户端验证成功后将封装进防篡改签名封签返回。
