@@ -5,7 +5,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
 export interface MaskedTextProps {
   value: string;
   /** Number of characters to keep visible at the start */
@@ -33,7 +32,9 @@ export function MaskedText({
   const [copied, setCopied] = useState(false);
   const [isPressing, setIsPressing] = useState(false);
   /* 长按扩散动画：从按下坐标向外扩散，覆盖全组件后复制完成 */
-  const [ripple, setRipple] = useState<{ x: number; y: number; size: number } | null>(null);
+  const rippleAnimRef = useRef<Animation | null>(null);
+  /* 扩散参数快照：中心点与目标半径，供原路收回计算当前半径 */
+  const expandParamsRef = useRef<{ x: number; y: number; radius: number } | null>(null);
   const { toast } = useToast();
 
   const rootRef = useRef<HTMLSpanElement | null>(null);
@@ -97,15 +98,31 @@ export function MaskedText({
       setIsPressing(true);
       startPosRef.current = { x: clientX, y: clientY };
 
-      /* 计算以按下点为圆心、能覆盖整个组件的扩散圆直径 */
-      if (rootRef.current) {
+      /* 参考 ThemeToggle 的 View Transition 圆形揭示：clipPath circle 从按下点平滑扩散覆盖全组件 */
+      if (rootRef.current && 'animate' in rootRef.current) {
         const rect = rootRef.current.getBoundingClientRect();
         const localX = clientX - rect.left;
         const localY = clientY - rect.top;
         const farX = Math.max(localX, rect.width - localX);
         const farY = Math.max(localY, rect.height - localY);
-        const size = Math.sqrt(farX * farX + farY * farY) * 2;
-        setRipple({ x: localX, y: localY, size });
+        const endRadius = Math.sqrt(farX * farX + farY * farY);
+
+        rippleAnimRef.current?.cancel();
+        expandParamsRef.current = { x: localX, y: localY, radius: endRadius };
+        rippleAnimRef.current = rootRef.current.animate(
+          {
+            clipPath: [
+              `circle(0px at ${localX}px ${localY}px)`,
+              `circle(${endRadius}px at ${localX}px ${localY}px)`,
+            ],
+            backgroundColor: ['hsl(var(--primary) / 0.15)', 'hsl(var(--primary) / 0.15)'],
+          },
+          {
+            duration: 500,
+            easing: 'ease-in-out',
+            fill: 'forwards',
+          }
+        );
       }
 
       if (timerRef.current) {
@@ -115,12 +132,15 @@ export function MaskedText({
       timerRef.current = setTimeout(() => {
         isLongPressRef.current = true;
         setIsPressing(false);
+        /* 扩散完成：保持覆盖态直至松开，不需要收回动画 */
+        expandParamsRef.current = null;
         copyToClipboard();
       }, 500);
     },
     [copyable, value, copyToClipboard]
   );
 
+  /* 松开未扩散完成：clipPath 圆原路收回 */
   const handleEnd = useCallback(() => {
     setIsPressing(false);
     startPosRef.current = null;
@@ -128,7 +148,41 @@ export function MaskedText({
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    setRipple(null);
+    if (rippleAnimRef.current) {
+      const anim = rippleAnimRef.current;
+      /* 记录了扩散参数时，从当前半径圆原路收回至按下点 */
+      const expand = expandParamsRef.current;
+      if (expand) {
+        const progress = anim.effect
+          ? (anim.effect.getComputedTiming().progress ?? 0)
+          : 0;
+        const currentRadius = expand.radius * progress;
+        anim.cancel();
+        const shrink = rootRef.current?.animate(
+          {
+            clipPath: [
+              `circle(${currentRadius}px at ${expand.x}px ${expand.y}px)`,
+              `circle(0px at ${expand.x}px ${expand.y}px)`,
+            ],
+            backgroundColor: ['hsl(var(--primary) / 0.15)', 'hsl(var(--primary) / 0)'],
+          },
+          {
+            duration: Math.max(80, (currentRadius / expand.radius) * 250),
+            easing: 'ease-in',
+            fill: 'forwards',
+          }
+        );
+        if (shrink) {
+          shrink.onfinish = () => {
+            shrink.cancel();
+          };
+          rippleAnimRef.current = shrink;
+        }
+      } else {
+        rippleAnimRef.current?.cancel();
+        rippleAnimRef.current = null;
+      }
+    }
     if (isLongPressRef.current) {
       setTimeout(() => {
         isLongPressRef.current = false;
@@ -196,26 +250,6 @@ export function MaskedText({
           onTouchEnd={handleEnd}
           onTouchCancel={handleEnd}
         >
-          {/* 长按扩散层：以按下点为圆心扩散至覆盖全组件，扩散完成即复制；松开未完成则原路收回 */}
-          <AnimatePresence>
-            {ripple && (
-              <motion.span
-                className="absolute rounded-full bg-primary/15 pointer-events-none"
-                style={{
-                  left: ripple.x,
-                  top: ripple.y,
-                  width: ripple.size,
-                  height: ripple.size,
-                  marginLeft: -ripple.size / 2,
-                  marginTop: -ripple.size / 2,
-                }}
-                initial={{ scale: 0, opacity: 0.6 }}
-                animate={{ scale: 1, opacity: 0.25 }}
-                exit={{ scale: 0, opacity: 0, transition: { duration: 0.25, ease: 'easeIn' } }}
-                transition={{ duration: 0.5, ease: 'easeOut' }}
-              />
-            )}
-          </AnimatePresence>
           <span className="truncate">{revealed ? value : maskValue(value, head, tail)}</span>
           <AnimatePresence>
             {copied && (
