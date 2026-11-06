@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Code2, ShieldCheck, Zap, Lock } from 'lucide-react';
+import { Code2, ShieldCheck, Zap, Lock, FileCode2 } from 'lucide-react';
 
 export default function ApiDocsPage() {
   useEffect(() => {
@@ -206,6 +206,93 @@ export default function ApiDocsPage() {
             <div className="p-3 bg-muted/30 border rounded-lg space-y-1 text-muted-foreground">
               <span className="font-semibold text-foreground block">动态随机心跳机制：</span>
               <p>每次验证与心跳响应均下发 heartbeatInterval 数值。开启随机心跳后该数值为动态抽取。客户端严禁使用固定间隔，须根据每次响应下发的数值动态规划下次请求。</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 动态钩子脚本开发指南 */}
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <FileCode2 className="h-4 w-4 text-primary" />
+              动态钩子脚本开发规范
+            </CardTitle>
+            <CardDescription className="text-xs">
+              在客户端授权验证签名封签前执行，支持动态下发载荷属性与前置条件拦截
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
+              <span className="font-semibold text-foreground block">沙箱执行环境与时机</span>
+              <p className="text-muted-foreground">
+                脚本在 Node.js vm 轻量安全隔离区运行，触发时机位于卡密有效期及版本校验通过后、Ed25519 签名封签之前。
+                沙箱施加 50 毫秒执行超时上限，无网络或系统文件访问权限。
+              </p>
+            </div>
+
+            <div className="p-3 bg-muted/30 border rounded-lg space-y-3">
+              <span className="font-semibold text-foreground block">沙箱内置上下文参数</span>
+              <div className="grid gap-2">
+                <div className="bg-background/80 p-2.5 rounded border space-y-1">
+                  <div className="flex items-center gap-2 font-mono font-semibold text-foreground">
+                    <span>req</span>
+                    <Badge variant="outline" className="text-[10px] py-0 h-4 font-normal">只读对象</Badge>
+                  </div>
+                  <p className="text-muted-foreground">
+                    包含本次验证的完整上下文：<code className="font-mono text-foreground">protocol</code>（&apos;verify&apos; 或 &apos;veil&apos;）、
+                    <code className="font-mono text-foreground">softwareName</code>、
+                    <code className="font-mono text-foreground">licenseKey</code>、
+                    <code className="font-mono text-foreground">hwid</code>、
+                    <code className="font-mono text-foreground">deviceName</code>、
+                    <code className="font-mono text-foreground">version</code>、
+                    <code className="font-mono text-foreground">versionCode</code>、
+                    <code className="font-mono text-foreground">ipAddress</code>、
+                    <code className="font-mono text-foreground">nonce</code>、
+                    <code className="font-mono text-foreground">timestamp</code>。
+                    在 veil 协议下还包含客户端上报的环境完整性证据 <code className="font-mono text-foreground">evidence</code> 与布局标识 <code className="font-mono text-foreground">evidenceLayout</code>。
+                  </p>
+                </div>
+
+                <div className="bg-background/80 p-2.5 rounded border space-y-1">
+                  <div className="flex items-center gap-2 font-mono font-semibold text-foreground">
+                    <span>payload</span>
+                    <Badge variant="outline" className="text-[10px] py-0 h-4 font-normal">读写对象</Badge>
+                  </div>
+                  <p className="text-muted-foreground">
+                    初始值为软件级、版本级与卡密级三者合并解析出的 JSON 字典。脚本对其增删改查的键值在执行完毕后自动序列化，进入防篡改加密封签。
+                  </p>
+                </div>
+
+                <div className="bg-background/80 p-2.5 rounded border space-y-1">
+                  <div className="flex items-center gap-2 font-mono font-semibold text-foreground">
+                    <span>reject(reason)</span>
+                    <Badge variant="outline" className="text-[10px] py-0 h-4 font-normal">拦截函数</Badge>
+                  </div>
+                  <p className="text-muted-foreground">
+                    调用该函数或显式抛出异常直接终止当前验证请求，向客户端回传指定的拦截原因。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
+              <span className="font-semibold text-foreground block">典型脚本编写示例</span>
+              <div className="bg-background/80 p-3 rounded border font-mono text-xs leading-relaxed overflow-x-auto space-y-3">
+                <div>
+                  <span className="text-muted-foreground block">// 示例：依据协议通道或版本号下发动态功能开关</span>
+                  <span className="text-blue-500">payload</span>.features = [<span className="text-green-500">&apos;basic_export&apos;</span>];{'\n'}
+                  <span className="text-purple-500">if</span> (req.protocol === <span className="text-green-500">&apos;veil&apos;</span> || (req.versionCode && req.versionCode &gt;= <span className="text-amber-500">200</span>)) {'{'}{'\n'}
+                  {'  '}<span className="text-blue-500">payload</span>.features.push(<span className="text-green-500">&apos;hardware_accel&apos;</span>, <span className="text-green-500">&apos;cloud_render&apos;</span>);{'\n'}
+                  {'  '}<span className="text-blue-500">payload</span>.maxConcurrency = <span className="text-amber-500">8</span>;{'\n'}
+                  {'}'}
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">// 示例：自定义前置规则阻断</span>
+                  <span className="text-purple-500">if</span> (req.ipAddress && req.ipAddress.startsWith(<span className="text-green-500">&apos;10.&apos;</span>)) {'{'}{'\n'}
+                  {'  '}<span className="text-red-500">reject</span>(<span className="text-green-500">&apos;禁止使用内网测试地址接入&apos;</span>);{'\n'}
+                  {'}'}
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
