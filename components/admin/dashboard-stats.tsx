@@ -1,10 +1,8 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { User, Dice1 as License, Clock, CheckCircle, AlertCircle, Activity, BarChart3, Table as TableIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { User, Dice1 as License, Clock, CheckCircle, AlertCircle, Activity } from 'lucide-react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { formatOnlyDate, cn } from '@/lib/utils';
 import { motion, useSpring, useTransform } from 'framer-motion';
 
@@ -46,6 +44,19 @@ type StatsData = {
 
 function ActivityBarChart({ data }: { data: { date: string; created: number; activated: number }[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* 延迟应用 hover 变更，鼠标在柱区与提示间移动时不触发卸载重建循环 */
+  const scheduleHover = useCallback((idx: number | null) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setHoveredIndex(idx), 60);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const maxVal = Math.max(5, ...data.map((d) => Math.max(d.created, d.activated)));
   const yMax = Math.ceil(maxVal / 5) * 5;
@@ -123,8 +134,8 @@ function ActivityBarChart({ data }: { data: { date: string; created: number; act
             return (
               <g
                 key={item.date}
-                onMouseEnter={() => setHoveredIndex(idx)}
-                onMouseLeave={() => setHoveredIndex(null)}
+                onMouseEnter={() => scheduleHover(idx)}
+                onMouseLeave={() => scheduleHover(null)}
                 className="cursor-pointer"
               >
                 <rect
@@ -417,74 +428,19 @@ export default function DashboardStats() {
       </motion.div>
 
       <Card className="mb-8 transition-all duration-200 hover:shadow-sm">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-lg flex items-center">
-              <Clock className="h-5 w-5 mr-2 text-muted-foreground" />
-              近期授权动态
-            </CardTitle>
-            <CardDescription>
-              过去 7 天内新生成和新激活的授权趋势
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-1 border rounded-lg p-0.5 bg-muted/40">
-            <Button
-              type="button"
-              variant={viewMode === 'chart' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 text-xs px-2.5"
-              onClick={() => setViewMode('chart')}
-            >
-              <BarChart3 className="h-3.5 w-3.5 mr-1" />
-              柱状图
-            </Button>
-            <Button
-              type="button"
-              variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 text-xs px-2.5"
-              onClick={() => setViewMode('table')}
-            >
-              <TableIcon className="h-3.5 w-3.5 mr-1" />
-              数据表
-            </Button>
-          </div>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center">
+            <Clock className="h-5 w-5 mr-2 text-muted-foreground" />
+            近期授权动态
+          </CardTitle>
+          <CardDescription>
+            过去 7 天内新生成和新激活的授权趋势
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {viewMode === 'chart' ? (
-            <div className="w-full py-2">
-              <ActivityBarChart data={placeholderStats.recentActivity} />
-            </div>
-          ) : (
-            <div className="rounded-md border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>日期</TableHead>
-                    <TableHead className="text-center">新生成授权数</TableHead>
-                    <TableHead className="text-center">新激活授权数</TableHead>
-                    <TableHead className="text-right">当日合计</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {placeholderStats.recentActivity.map((item) => (
-                    <TableRow key={item.date}>
-                      <TableCell className="font-mono text-xs">{item.date}</TableCell>
-                      <TableCell className="text-center font-medium text-blue-600 dark:text-blue-400">
-                        {item.created} 个
-                      </TableCell>
-                      <TableCell className="text-center font-medium text-emerald-600 dark:text-emerald-400">
-                        {item.activated} 个
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {item.created + item.activated} 个
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <div className="w-full py-2">
+            <ActivityBarChart data={placeholderStats.recentActivity} />
+          </div>
         </CardContent>
       </Card>
 

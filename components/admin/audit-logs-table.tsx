@@ -597,9 +597,9 @@ export default function AuditLogsTable() {
                                     <span className="text-muted-foreground/70 font-sans text-[11px] mr-1">IP:</span>
                                     {log.ipAddress || '-'}
                                   </span>
-                                  <span className="text-[11px] text-muted-foreground select-all flex items-center" title={`HWID: ${log.hwid}`}>
+                                  <span className="text-[11px] text-muted-foreground select-all flex items-center">
                                     <span className="text-muted-foreground/70 font-sans mr-1 shrink-0">HWID:</span>
-                                    <span className="truncate max-w-[140px]">{log.hwid}</span>
+                                    <MaskedText value={log.hwid} head={4} tail={4} className="max-w-[140px] truncate" />
                                   </span>
                                 </div>
                               ) : (

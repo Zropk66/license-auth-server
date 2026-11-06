@@ -7,20 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldAlert, Plus, Trash2, Search, RefreshCw, Globe, Laptop, Loader2 } from 'lucide-react';
+import { ShieldAlert, Plus, Trash2, Search, RefreshCw, Globe, Laptop, Loader2, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
-import AddBlacklistDialog from '@/components/admin/add-blacklist-dialog';
+import AddBlacklistDialog, { BlacklistEntry } from '@/components/admin/add-blacklist-dialog';
 
-interface BlacklistItem {
-  id: string;
-  type: string;
-  value: string;
-  reason: string | null;
-  isAuto: boolean;
-  expiresAt: string | null;
-  createdAt: string;
-}
+interface BlacklistItem extends BlacklistEntry {}
 
 export default function BlacklistPage() {
   useEffect(() => {
@@ -33,6 +25,7 @@ export default function BlacklistPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [entryToEdit, setEntryToEdit] = useState<BlacklistItem | null>(null);
 
   const fetchBlacklist = async () => {
     setLoading(true);
@@ -69,8 +62,10 @@ export default function BlacklistPage() {
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`/api/admin/blacklist/${id}`, {
-        method: 'DELETE',
+      const res = await fetch('/api/admin/blacklist/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
       });
       if (!res.ok) throw new Error('解除封禁失败');
 
@@ -107,7 +102,13 @@ export default function BlacklistPage() {
               <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               刷新
             </Button>
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setEntryToEdit(null);
+                setDialogOpen(true);
+              }}
+            >
               <Plus className="h-4 w-4 mr-1" />
               添加封禁
             </Button>
@@ -238,15 +239,30 @@ export default function BlacklistPage() {
                           {new Date(item.createdAt).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:bg-destructive/10"
-                            onClick={() => handleDelete(item.id, item.value)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            解除封禁
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setEntryToEdit(item);
+                                setDialogOpen(true);
+                              }}
+                              title="编辑封禁配置"
+                            >
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">编辑</span>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDelete(item.id, item.value)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              解除封禁
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -262,6 +278,7 @@ export default function BlacklistPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSuccess={fetchBlacklist}
+        entryToEdit={entryToEdit}
       />
 
       <ConfirmDialog />

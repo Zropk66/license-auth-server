@@ -27,6 +27,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
@@ -437,15 +438,19 @@ export default function VerificationDetailsDialog({
               </div>
               <div className="flex items-center justify-between gap-2 flex-wrap bg-muted/30 p-2 rounded border">
                 <span className="font-mono text-xs font-semibold text-foreground select-all break-all">
-                  {log.hwid || '未上报特征码'}
+                  {displayHwid ? (
+                    <MaskedText value={displayHwid} head={6} tail={4} />
+                  ) : (
+                    '未上报特征码'
+                  )}
                 </span>
-                {log.hwid && (
+                {displayHwid && (
                   <div className="flex items-center gap-1 shrink-0">
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs px-2 gap-1"
-                      onClick={() => copyToClipboard(log.hwid!, '硬件特征码')}
+                      onClick={() => copyToClipboard(displayHwid!, '硬件特征码')}
                     >
                       {copiedKey === '硬件特征码' ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                       复制 HWID
@@ -454,7 +459,7 @@ export default function VerificationDetailsDialog({
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs px-2 gap-1 text-destructive hover:bg-destructive/10 border-destructive/20"
-                      onClick={() => handleQuickBlacklist('hwid', log.hwid!)}
+                      onClick={() => handleQuickBlacklist('hwid', displayHwid!)}
                       disabled={isBlacklisting}
                     >
                       <Ban className="h-3 w-3" />
