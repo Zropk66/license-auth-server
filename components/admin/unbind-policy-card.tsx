@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { SettingCard } from '@/components/admin/setting-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -89,21 +89,12 @@ export default function UnbindPolicyCard() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Smartphone className="h-5 w-5 text-primary" />
-          <div>
-            <CardTitle className="text-base">用户自助换绑策略</CardTitle>
-            <CardDescription className="text-xs">
-              配置用户端卡密解绑设备权限（默认一卡一机不允许换绑，开启后可限制频率与扣除时长）。
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent>
-        {loading ? (
+    <SettingCard
+      title="用户自助换绑策略"
+      description="配置用户端卡密解绑设备权限，可限制频率与扣除时长。"
+      icon={Smartphone}
+    >
+      {loading ? (
           <div className="py-6 text-center text-xs text-muted-foreground">
             正在加载换绑策略配置...
           </div>
@@ -192,7 +183,6 @@ export default function UnbindPolicyCard() {
             </div>
           </form>
         )}
-      </CardContent>
-    </Card>
+    </SettingCard>
   );
 }

@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
@@ -15,9 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 const formSchema = z.object({
   username: z.string().min(3, '用户名至少需要3个字符'),
   password: z.string().min(8, '密码长度至少需要8位字符'),
-  role: z.enum(['admin', 'owner'], {
-    required_error: '请选择管理员角色',
-  }),
+  role: z.literal('admin'),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -133,7 +131,7 @@ export default function CreateManagerDialog({
                 <FormItem>
                   <FormLabel>角色</FormLabel>
                   <Select
-                    disabled={isSubmitting}
+                    disabled
                     onValueChange={field.onChange}
                     defaultValue={field.value}
                   >
@@ -143,10 +141,12 @@ export default function CreateManagerDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="admin">管理员 (admin)</SelectItem>
-                      <SelectItem value="owner">系统所有者 (owner)</SelectItem>
+                      <SelectItem value="admin">管理员</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormDescription>
+                    新账号默认为管理员。超级管理员仅可通过编辑已有账号提升，且系统始终保留至少一名超级管理员。
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -4,7 +4,7 @@ import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { logAction } from '@/lib/audit';
 import { batchGenerateLicenseSchema } from '@/lib/validations';
-import { generateUserHash } from '@/lib/utils';
+import { generateUserHash } from '@/lib/server/crypto';
 
 /* 生成带可选前缀的标准 16 字节十六进制分段卡密 */
 function generateSingleKey(prefix?: string): string {

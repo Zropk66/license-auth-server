@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { SettingCard } from '@/components/admin/setting-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -79,20 +79,12 @@ export default function RateLimitCard() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Gauge className="h-5 w-5 text-primary" />
-          <div>
-            <CardTitle className="text-base">速率限制策略</CardTitle>
-            <CardDescription className="text-xs">
-              基于 IP 的内存级限流，防止暴力破解与接口滥用。修改后即时生效（缓存 60 秒）。
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
+    <SettingCard
+      title="速率限制策略"
+      description="基于 IP 的内存级限流，防止暴力破解与接口滥用。修改后即时生效。"
+      icon={Gauge}
+    >
+      {loading ? (
           <div className="flex justify-center items-center py-6">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
@@ -172,7 +164,6 @@ export default function RateLimitCard() {
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+    </SettingCard>
   );
 }

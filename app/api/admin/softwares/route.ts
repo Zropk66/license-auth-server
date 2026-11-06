@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
           minVersionCode: s.minVersionCode,
           maxVersionCode: s.maxVersionCode,
           customPayload: s.customPayload,
+          hookScript: (s as any).hookScript ?? null,
           licenseCount,
           versionCount,
           createdAt: s.createdAt,
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, code, description, enabled, minVersionCode, maxVersionCode, customPayload } = parseResult.data;
+    const { name, code, description, enabled, minVersionCode, maxVersionCode, customPayload, hookScript } = parseResult.data;
     const trimmedName = name.trim();
 
     // 检查名称唯一性
@@ -121,7 +122,8 @@ export async function POST(req: NextRequest) {
         minVersionCode: minVersionCode ?? 0,
         maxVersionCode: maxVersionCode ?? null,
         customPayload: customPayload?.trim() || null,
-      },
+        hookScript: hookScript?.trim() || null,
+      } as any,
     });
 
     await logAction({

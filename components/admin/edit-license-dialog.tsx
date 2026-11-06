@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
@@ -19,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatDateForInput, parseDateFromInput } from '@/lib/date-utils';
 
 interface License {
   id: string;
@@ -85,32 +87,6 @@ interface EditLicenseDialogProps {
   license: License;
   onLicenseUpdated: (license: License) => void;
 }
-
-const formatDateForInput = (d?: Date | null) => {
-  if (!d || isNaN(d.getTime())) return '';
-  return format(d, 'yyyy-MM-dd HH:mm');
-};
-
-const parseDateFromInput = (str: string): Date | null => {
-  if (!str.trim()) return null;
-  const cleanStr = str.trim().replace(/\//g, '-');
-  const d = new Date(cleanStr);
-  if (!isNaN(d.getTime())) return d;
-  const match = cleanStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
-  if (match) {
-    const [_, y, m, day, h, min, s] = match;
-    const parsed = new Date(
-      parseInt(y, 10),
-      parseInt(m, 10) - 1,
-      parseInt(day, 10),
-      h ? parseInt(h, 10) : 0,
-      min ? parseInt(min, 10) : 0,
-      s ? parseInt(s, 10) : 0
-    );
-    if (!isNaN(parsed.getTime())) return parsed;
-  }
-  return null;
-};
 
 const getInitialDuration = (minutes?: number | null) => {
   if (!minutes) return { value: 30, unit: 'days' as const };
@@ -193,12 +169,17 @@ export default function EditLicenseDialog({
 
   const fetchGlobalSettings = async () => {
     try {
-      const res = await fetch('/api/settings/public');
+      const res = await fetch('/api/admin/settings');
       if (res.ok) {
         const data = await res.json();
-        setGlobalUnbindEnabled(!!data.unbindEnabled);
+        if (Array.isArray(data)) {
+          const isEnabled = data.find((s: any) => s.key === 'unbind_enabled')?.value === 'true';
+          setGlobalUnbindEnabled(isEnabled);
+        }
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching global settings:', error);
+    }
   };
 
   const onSubmit = async (data: FormValues) => {
@@ -259,19 +240,29 @@ export default function EditLicenseDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>编辑授权</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="sm:max-w-[740px] p-0 flex flex-col gap-0 overflow-hidden shadow-2xl border-border/60">
+        <DialogHeader className="p-6 pb-4 border-b border-border/50 shrink-0 bg-background/95">
+          <DialogTitle className="text-lg font-semibold">编辑授权</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground mt-1">
             更新授权详情（所属软件：{license.softwareName}）
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="softwareName"
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <div className="p-6">
+              <Tabs defaultValue="basic" className="w-full flex flex-col">
+                <TabsList className="grid w-full grid-cols-2 mb-4 bg-muted/60 p-1 shrink-0">
+                  <TabsTrigger value="basic" className="text-xs font-medium">核心授权设置</TabsTrigger>
+                  <TabsTrigger value="payload" className="text-xs font-medium">独立自定义载荷 (JSON)</TabsTrigger>
+                </TabsList>
+
+                <div className="h-[390px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  <TabsContent value="basic" className="space-y-4 mt-0">
+                  <div className="grid grid-cols-2 gap-3 items-start">
+                    <FormField
+                      control={form.control}
+                      name="softwareName"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>所属软件</FormLabel>
@@ -514,16 +505,40 @@ export default function EditLicenseDialog({
                 }}
               />
             )}
+          </div>
 
+          <FormField
+            control={form.control}
+            name="hardwareBindingEnabled"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/10">
+                <div className="space-y-0.5">
+                  <FormLabel className="text-sm font-medium">HWID 硬件设备绑定</FormLabel>
+                  <FormDescription className="text-xs">
+                    启用后，该授权将与特定的物理设备严格绑定。
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={isSubmitting}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          {watchHardwareBindingEnabled && globalUnbindEnabled && (
             <FormField
               control={form.control}
-              name="hardwareBindingEnabled"
+              name="allowSelfUnbind"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/20">
                   <div className="space-y-0.5">
-                    <FormLabel className="text-base">HWID 绑定</FormLabel>
-                    <FormDescription>
-                      启用后，授权将与特定的HWID 绑定。
+                    <FormLabel className="text-sm font-medium">允许用户端自助换绑设备</FormLabel>
+                    <FormDescription className="text-xs">
+                      允许终端用户在控制台自助解绑（遵循系统冷却与限次策略）。
                     </FormDescription>
                   </div>
                   <FormControl>
@@ -536,98 +551,90 @@ export default function EditLicenseDialog({
                 </FormItem>
               )}
             />
+          )}
 
-            {watchHardwareBindingEnabled && globalUnbindEnabled && (
-              <FormField
-                control={form.control}
-                name="allowSelfUnbind"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/20">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-sm font-medium">允许用户端自助换绑设备</FormLabel>
-                      <FormDescription className="text-xs">
-                        允许终端用户在控制台自助解绑（遵循系统月度限次与冷却时间策略）。
-                      </FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
+          {watchHardwareBindingEnabled && !globalUnbindEnabled && (
+            <div className="p-2.5 border rounded-lg bg-muted/20 text-xs text-muted-foreground">
+              提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密为一机一卡不可换绑。
+            </div>
+          )}
+
+          <FormField
+            control={form.control}
+            name="note"
+            render={({ field }) => (
+              <FormItem className="space-y-1.5">
+                <FormLabel className="text-xs font-medium">卡密备注 (选填)</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="输入卡密客户说明、订单号或备注..."
+                    value={field.value || ''}
+                    onChange={field.onChange}
+                    disabled={isSubmitting}
+                    maxLength={500}
+                    className="h-9 text-sm"
+                  />
+                </FormControl>
+                <FormMessage className="text-[11px]" />
+              </FormItem>
             )}
+          />
+        </TabsContent>
 
-            {watchHardwareBindingEnabled && !globalUnbindEnabled && (
-              <div className="p-2.5 border rounded-lg bg-muted/20 text-xs text-muted-foreground">
-                提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密为一机一卡不可换绑。
-              </div>
+        <TabsContent value="payload" className="space-y-3 mt-0">
+          <FormField
+            control={form.control}
+            name="customPayload"
+            render={({ field }) => (
+              <FormItem className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <FormLabel className="text-xs font-medium">独立自定义载荷 / JSON (可选)</FormLabel>
+                  <span className="text-[11px] text-muted-foreground">单个卡密专属下发数据</span>
+                </div>
+                <FormControl>
+                  <Textarea
+                    placeholder='留空则自动继承所属软件默认配置。填入则覆盖，例如: {"hook_rva": "0x1A42E0", "vip_key": "xxx"}'
+                    rows={8}
+                    className="font-mono text-xs leading-relaxed resize-none bg-muted/10"
+                    {...field}
+                    value={field.value || ''}
+                  />
+                </FormControl>
+                <div className="rounded-md bg-muted/30 p-2.5 text-[11px] text-muted-foreground leading-normal border border-border/40">
+                  <p className="font-medium text-foreground mb-0.5">优先级说明：</p>
+                  <p>• 留空时，客户端将自动继承软件默认配置（如 RVA 偏移量）。</p>
+                  <p>• 填入 JSON 时，此卡密专属数据将优先下发并深度覆盖软件默认项。</p>
+                </div>
+                <FormMessage className="text-[11px]" />
+              </FormItem>
             )}
+          />
+        </TabsContent>
+      </div>
+    </Tabs>
+  </div>
 
-            <FormField
-              control={form.control}
-              name="customPayload"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>独立自定义载荷 / JSON (可选)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder='留空则自动继承所属软件默认配置。填入则覆盖，例如: {"vip_key": "xxx"}'
-                      rows={3}
-                      className="font-mono text-xs"
-                      {...field}
-                      value={field.value || ''}
-                    />
-                  </FormControl>
-                  <FormDescription>为此卡密单独下发专属密钥或配置数据；留空则继承软件默认载荷。</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="note"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>卡密备注 (选填)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder=""
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      disabled={isSubmitting}
-                      maxLength={500}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isSubmitting}
-              >
-                取消
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    正在更新...
-                  </>
-                ) : (
-                  '更新授权'
-                )}
-              </Button>
-            </DialogFooter>
+    <DialogFooter className="p-4 px-6 border-t border-border/50 bg-muted/30 shrink-0 flex items-center justify-end gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => onOpenChange(false)}
+        disabled={isSubmitting}
+        className="h-9"
+      >
+        取消
+      </Button>
+      <Button type="submit" disabled={isSubmitting} className="h-9">
+        {isSubmitting ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            正在更新...
+          </>
+        ) : (
+          '更新授权'
+        )}
+      </Button>
+    </DialogFooter>
           </form>
         </Form>
       </DialogContent>

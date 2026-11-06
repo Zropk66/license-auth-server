@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { isValidTurnstileToken } from '@/lib/utils';
+import { isValidTurnstileToken } from '@/lib/server/turnstile';
 import { signJWT } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { adminLoginSchema } from '@/lib/validations';

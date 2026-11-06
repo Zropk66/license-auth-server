@@ -6,16 +6,23 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
-import { Package, Plus, Edit, Trash2, RefreshCw, ExternalLink } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, RefreshCw, ExternalLink, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
+import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle';
 import AddVersionDialog, { VersionItem } from '@/components/admin/add-version-dialog';
 
 export default function SoftwareVersionsPage() {
   const { toast } = useToast();
+  const [ConfirmDialog, confirm] = useConfirm();
   const [versions, setVersions] = useState<VersionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [versionToEdit, setVersionToEdit] = useState<VersionItem | null>(null);
+
+  useEffect(() => {
+    document.title = '版本管理 | 管理员后台';
+  }, []);
 
   const fetchVersions = async () => {
     setLoading(true);
@@ -39,26 +46,16 @@ export default function SoftwareVersionsPage() {
     fetchVersions();
   }, []);
 
-  const handleToggle = async (v: VersionItem) => {
-    try {
-      const res = await fetch(`/api/admin/software-versions/${v.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !v.enabled }),
-      });
-      if (!res.ok) throw new Error('更新状态失败');
-      fetchVersions();
-    } catch (err: any) {
-      toast({
-        title: '错误',
-        description: err.message || '操作失败',
-        variant: 'destructive',
-      });
-    }
-  };
+  const handleToggle = useOptimisticToggle<any>(setVersions, '/api/admin/software-versions');
 
   const handleDelete = async (v: VersionItem) => {
-    if (!confirm(`确定要删除软件 [${v.softwareName}] 的版本 [v${v.version}] 吗？`)) return;
+    const confirmed = await confirm({
+      title: '删除版本',
+      description: `确定要删除软件 [${v.softwareName}] 的版本 [v${v.version}] 吗？此操作不可恢复。`,
+      confirmText: '确定删除',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/admin/software-versions/${v.id}`, {
@@ -121,7 +118,7 @@ export default function SoftwareVersionsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>所属软件</TableHead>
+                    <TableHead>软件</TableHead>
                     <TableHead>版本号 (SemVer)</TableHead>
                     <TableHead>代码 (Code)</TableHead>
                     <TableHead>强制更新</TableHead>
@@ -134,6 +131,7 @@ export default function SoftwareVersionsPage() {
                   {loading ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-6 text-muted-foreground text-xs">
+                        <Loader2 className="h-4 w-4 mx-auto mb-1 animate-spin" />
                         正在加载版本数据...
                       </TableCell>
                     </TableRow>
@@ -217,6 +215,8 @@ export default function SoftwareVersionsPage() {
         versionToEdit={versionToEdit}
         onSuccess={fetchVersions}
       />
+
+      <ConfirmDialog />
     </>
   );
 }

@@ -54,6 +54,8 @@ __pycache__/
 .idea/
 .vscode/
 .claude/
+.superpowers/
+docs/superpowers/
 .trae/
 .trae-html-share-packages/
 recipes.json

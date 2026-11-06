@@ -47,6 +47,7 @@ model Software {
   minVersionCode Int?     @default(0)
   maxVersionCode Int?
   customPayload  String?
+  hookScript     String?  @db.Text
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

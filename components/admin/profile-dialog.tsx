@@ -303,7 +303,7 @@ export default function ProfileDialog({
                     当前角色权限
                   </span>
                   <Badge variant={role === 'owner' ? 'default' : 'secondary'}>
-                    {role === 'owner' ? '系统所有者 (owner)' : '管理员 (admin)'}
+                    {role === 'owner' ? '超级管理员' : '管理员'}
                   </Badge>
                 </div>
 

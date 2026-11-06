@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ShieldAlert, Plus, Trash2, Search, RefreshCw, Globe, Laptop } from 'lucide-react';
+import { ShieldAlert, Plus, Trash2, Search, RefreshCw, Globe, Laptop, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import AddBlacklistDialog from '@/components/admin/add-blacklist-dialog';
 
 interface BlacklistItem {
@@ -22,7 +23,11 @@ interface BlacklistItem {
 }
 
 export default function BlacklistPage() {
+  useEffect(() => {
+    document.title = '黑名单管理 | 管理员后台';
+  }, []);
   const { toast } = useToast();
+  const [ConfirmDialog, confirm] = useConfirm();
   const [items, setItems] = useState<BlacklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState('all');
@@ -56,7 +61,12 @@ export default function BlacklistPage() {
   }, [typeFilter]);
 
   const handleDelete = async (id: string, value: string) => {
-    if (!confirm(`确定要将 [${value}] 从黑名单中移除并解封吗？`)) return;
+    const confirmed = await confirm({
+      title: '解除封禁',
+      description: `确定要将 [${value}] 从黑名单中移除并解封吗？`,
+      confirmText: '确定解封',
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/admin/blacklist/${id}`, {
@@ -87,9 +97,9 @@ export default function BlacklistPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">黑名单安全防护</h1>
+            <h1 className="text-2xl font-bold tracking-tight">黑名单管理</h1>
             <p className="text-muted-foreground text-sm">
-              管理被封禁的 IP 地址与HWID (HWID)，支持自动安全防御拦截。
+              管理被封禁的 IP 地址与 HWID 机器码，支持自动安全防御拦截。
             </p>
           </div>
           <div className="flex gap-2">
@@ -190,6 +200,7 @@ export default function BlacklistPage() {
                   {loading ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        <Loader2 className="h-4 w-4 mx-auto mb-1 animate-spin" />
                         正在加载黑名单数据...
                       </TableCell>
                     </TableRow>
@@ -252,6 +263,8 @@ export default function BlacklistPage() {
         onOpenChange={setDialogOpen}
         onSuccess={fetchBlacklist}
       />
+
+      <ConfirmDialog />
     </>
   );
 }

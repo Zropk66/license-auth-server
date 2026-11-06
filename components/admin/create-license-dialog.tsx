@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar } from '@/components/ui/calendar';
@@ -18,32 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-const formatDateForInput = (d?: Date | null) => {
-  if (!d || isNaN(d.getTime())) return '';
-  return format(d, 'yyyy-MM-dd HH:mm');
-};
-
-const parseDateFromInput = (str: string): Date | null => {
-  if (!str.trim()) return null;
-  const cleanStr = str.trim().replace(/\//g, '-');
-  const d = new Date(cleanStr);
-  if (!isNaN(d.getTime())) return d;
-  const match = cleanStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
-  if (match) {
-    const [_, y, m, day, h, min, s] = match;
-    const parsed = new Date(
-      parseInt(y, 10),
-      parseInt(m, 10) - 1,
-      parseInt(day, 10),
-      h ? parseInt(h, 10) : 0,
-      min ? parseInt(min, 10) : 0,
-      s ? parseInt(s, 10) : 0
-    );
-    if (!isNaN(parsed.getTime())) return parsed;
-  }
-  return null;
-};
+import { formatDateForInput, parseDateFromInput } from '@/lib/date-utils';
 
 const formSchema = z.object({
   userId: z.string().min(1, '请选择用户'),
@@ -165,16 +141,20 @@ export default function CreateLicenseDialog({
 
   const fetchGlobalSettings = async () => {
     try {
-      const res = await fetch('/api/settings/public');
+      const res = await fetch('/api/admin/settings');
       if (res.ok) {
         const data = await res.json();
-        const isEnabled = !!data.unbindEnabled;
-        const defaultAllow = !!data.unbindDefaultAllow;
-        setGlobalUnbindEnabled(isEnabled);
-        setGlobalDefaultAllow(defaultAllow);
-        form.setValue('allowSelfUnbind', isEnabled && defaultAllow);
+        if (Array.isArray(data)) {
+          const isEnabled = data.find((s: any) => s.key === 'unbind_enabled')?.value === 'true';
+          const defaultAllow = data.find((s: any) => s.key === 'unbind_default_allow')?.value === 'true';
+          setGlobalUnbindEnabled(isEnabled);
+          setGlobalDefaultAllow(defaultAllow);
+          form.setValue('allowSelfUnbind', isEnabled && defaultAllow);
+        }
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching global settings:', error);
+    }
   };
 
   const fetchUsers = async () => {
@@ -269,436 +249,463 @@ export default function CreateLicenseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>创建新授权</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="sm:max-w-[740px] p-0 flex flex-col gap-0 overflow-hidden shadow-2xl border-border/60">
+        <DialogHeader className="p-6 pb-4 border-b border-border/50 shrink-0 bg-background/95">
+          <DialogTitle className="text-lg font-semibold">创建新授权</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground mt-1">
             为用户创建新的授权密钥。授权密钥将自动生成。
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="userId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>选择用户</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    disabled={isSubmitting || loadingUsers}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="请选择一个用户" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {loadingUsers ? (
-                        <div className="flex items-center justify-center p-2">
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          正在加载用户...
-                        </div>
-                      ) : users.length === 0 ? (
-                        <div className="p-2 text-center text-muted-foreground">
-                          未找到用户
-                        </div>
-                      ) : (
-                        users.map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            {user.username}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+            <div className="p-6">
+              <Tabs defaultValue="basic" className="w-full flex flex-col">
+                <TabsList className="grid w-full grid-cols-2 mb-4 bg-muted/60 p-1 shrink-0">
+                  <TabsTrigger value="basic" className="text-xs font-medium">核心授权设置</TabsTrigger>
+                  <TabsTrigger value="payload" className="text-xs font-medium">独立自定义载荷 (JSON)</TabsTrigger>
+                </TabsList>
 
-            <FormField
-              control={form.control}
-              name="softwareName"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>所属软件</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                    disabled={isSubmitting || loadingSoftwares}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={loadingSoftwares ? "正在加载所属软件..." : "请选择所属软件"} />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="ALL" className="font-medium text-primary">
-                        全部软件 (通用授权 / ALL)
-                      </SelectItem>
-                      {loadingSoftwares ? (
-                        <div className="flex items-center justify-center p-2 text-xs">
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          正在加载软件列表...
-                        </div>
-                      ) : (
-                        softwares.map((sw) => (
-                          <SelectItem key={sw.id} value={sw.name}>
-                            {sw.name} {sw.code ? `(${sw.code})` : ''}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="licenseType"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>到期类型</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    disabled={isSubmitting}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="请选择到期类型" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="fixed">即时卡 (创建即刻生效)</SelectItem>
-                      <SelectItem value="duration">激活卡 (首次登录起算时长)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {watchLicenseType === 'fixed' ? (
-              <FormField
-                control={form.control}
-                name="expirationDate"
-                render={({ field }) => {
-                  const currentDate = field.value || new Date();
-                  const hours = currentDate.getHours();
-                  const minutes = currentDate.getMinutes();
-
-                  const handleDateChange = (date: Date | undefined) => {
-                    if (!date) return;
-                    const newDate = new Date(date);
-                    newDate.setHours(hours);
-                    newDate.setMinutes(minutes);
-                    newDate.setSeconds(0);
-                    newDate.setMilliseconds(0);
-                    field.onChange(newDate);
-                    setDateInputText(formatDateForInput(newDate));
-                  };
-
-                  const handleHoursChange = (hStr: string) => {
-                    const h = parseInt(hStr, 10);
-                    const newDate = new Date(currentDate);
-                    newDate.setHours(h);
-                    field.onChange(newDate);
-                    setDateInputText(formatDateForInput(newDate));
-                  };
-
-                  const handleMinutesChange = (mStr: string) => {
-                    const m = parseInt(mStr, 10);
-                    const newDate = new Date(currentDate);
-                    newDate.setMinutes(m);
-                    field.onChange(newDate);
-                    setDateInputText(formatDateForInput(newDate));
-                  };
-
-                  const handleSetPermanent = () => {
-                    const permDate = new Date(2099, 11, 31, 23, 59, 59, 0);
-                    field.onChange(permDate);
-                    setDateInputText(formatDateForInput(permDate));
-                  };
-
-                  return (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>到期时间</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            value={dateInputText}
-                            onChange={(e) => {
-                              setDateInputText(e.target.value);
-                              const parsed = parseDateFromInput(e.target.value);
-                              if (parsed) {
-                                field.onChange(parsed);
-                              }
-                            }}
-                            onBlur={() => {
-                              const parsed = parseDateFromInput(dateInputText);
-                              if (parsed) {
-                                field.onChange(parsed);
-                                setDateInputText(formatDateForInput(parsed));
-                              } else if (field.value) {
-                                setDateInputText(formatDateForInput(field.value));
-                              }
-                            }}
-                            placeholder="YYYY-MM-DD HH:mm"
-                            disabled={isSubmitting}
-                            className="font-mono text-sm"
-                          />
-                        </FormControl>
-                        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              disabled={isSubmitting}
-                              title="打开时间选择器"
-                              className="shrink-0"
+                <div className="h-[390px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  <TabsContent value="basic" className="space-y-4 mt-0 focus-visible:outline-none">
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={form.control}
+                        name="userId"
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5">
+                            <FormLabel className="text-xs font-medium">选择用户</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                              disabled={isSubmitting || loadingUsers}
                             >
-                              <CalendarIcon className="h-4 w-4 opacity-70" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 flex flex-row" align="end">
-                            <Calendar
-                              mode="single"
-                              selected={field.value}
-                              onSelect={handleDateChange}
-                              disabled={(date) => {
-                                const today = new Date();
-                                today.setHours(0, 0, 0, 0);
-                                return date < today;
-                              }}
-                              initialFocus
-                            />
-                            <div className="flex flex-col justify-between border-l border-border p-3 bg-muted/10 w-36">
-                              <div className="space-y-3">
-                                <div className="text-xs font-semibold text-muted-foreground text-center">具体时间</div>
-                                <div className="flex flex-col gap-2 items-center">
-                                  <div className="flex items-center gap-1">
-                                    <select
-                                      value={String(hours).padStart(2, '0')}
-                                      onChange={(e) => handleHoursChange(e.target.value)}
-                                      disabled={isSubmitting}
-                                      className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
-                                    >
-                                      {Array.from({ length: 24 }, (_, i) => {
-                                        const val = String(i).padStart(2, '0');
-                                        return (
-                                          <option key={val} value={val}>
-                                            {val}
-                                          </option>
-                                        );
-                                      })}
-                                    </select>
-                                    <span className="text-xs font-medium text-muted-foreground">时</span>
+                              <FormControl>
+                                <SelectTrigger className="h-9 text-sm">
+                                  <SelectValue placeholder="请选择用户" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {loadingUsers ? (
+                                  <div className="flex items-center justify-center p-2 text-xs">
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    正在加载...
                                   </div>
-                                  <div className="flex items-center gap-1">
-                                    <select
-                                      value={String(minutes).padStart(2, '0')}
-                                      onChange={(e) => handleMinutesChange(e.target.value)}
-                                      disabled={isSubmitting}
-                                      className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
-                                    >
-                                      {Array.from({ length: 60 }, (_, i) => {
-                                        const val = String(i).padStart(2, '0');
-                                        return (
-                                          <option key={val} value={val}>
-                                            {val}
-                                          </option>
-                                        );
-                                      })}
-                                    </select>
-                                    <span className="text-xs font-medium text-muted-foreground">分</span>
+                                ) : users.length === 0 ? (
+                                  <div className="p-2 text-center text-xs text-muted-foreground">
+                                    未找到用户
                                   </div>
-                                </div>
-                              </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="w-full text-xs h-7 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/60 hover:bg-purple-50 dark:hover:bg-purple-950/30 font-medium whitespace-nowrap"
-                                onClick={handleSetPermanent}
-                              >
-                                设为永久
-                              </Button>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                      <FormDescription>
-                        支持直接手动输入或点击日历图标选择时间。
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-            ) : (
-              <div className="grid grid-cols-3 gap-2 items-end">
-                <div className="col-span-2">
-                  <FormField
-                    control={form.control}
-                    name="durationValue"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>授权时长</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            placeholder="请输入数字"
-                            {...field}
-                            disabled={isSubmitting}
-                            min={1}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="durationUnit"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
+                                ) : (
+                                  users.map((user) => (
+                                    <SelectItem key={user.id} value={user.id} className="text-xs">
+                                      {user.username}
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage className="text-[11px]" />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="softwareName"
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5">
+                            <FormLabel className="text-xs font-medium">所属软件</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value}
+                              disabled={isSubmitting || loadingSoftwares}
+                            >
+                              <FormControl>
+                                <SelectTrigger className="h-9 text-sm">
+                                  <SelectValue placeholder={loadingSoftwares ? "加载中..." : "选择软件"} />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="ALL" className="font-medium text-primary text-xs">
+                                  全部软件 (通用授权)
+                                </SelectItem>
+                                {loadingSoftwares ? (
+                                  <div className="flex items-center justify-center p-2 text-xs">
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    加载软件列表...
+                                  </div>
+                                ) : (
+                                  softwares.map((sw) => (
+                                    <SelectItem key={sw.id} value={sw.name} className="text-xs">
+                                      {sw.name} {sw.code ? `(${sw.code})` : ''}
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage className="text-[11px]" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                  <div className="grid grid-cols-2 gap-3 items-start">
+                    <FormField
+                      control={form.control}
+                      name="licenseType"
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5">
+                          <FormLabel className="text-xs font-medium">到期类型</FormLabel>
                           <Select
                             onValueChange={field.onChange}
                             defaultValue={field.value}
                             disabled={isSubmitting}
                           >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
+                            <FormControl>
+                              <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="到期类型" />
+                              </SelectTrigger>
+                            </FormControl>
                             <SelectContent>
-                              <SelectItem value="minutes">分钟</SelectItem>
-                              <SelectItem value="hours">小时</SelectItem>
-                              <SelectItem value="days">天</SelectItem>
-                              <SelectItem value="weeks">周</SelectItem>
+                              <SelectItem value="fixed" className="text-xs">即时卡 (创建即刻生效)</SelectItem>
+                              <SelectItem value="duration" className="text-xs">激活卡 (登录起算时长)</SelectItem>
                             </SelectContent>
                           </Select>
+                          <FormMessage className="text-[11px]" />
+                        </FormItem>
+                      )}
+                    />
+
+                    {watchLicenseType === 'fixed' ? (
+                      <FormField
+                        control={form.control}
+                        name="expirationDate"
+                        render={({ field }) => {
+                          const currentDate = field.value || new Date();
+                          const hours = currentDate.getHours();
+                          const minutes = currentDate.getMinutes();
+
+                          const handleDateChange = (date: Date | undefined) => {
+                            if (!date) return;
+                            const newDate = new Date(date);
+                            newDate.setHours(hours);
+                            newDate.setMinutes(minutes);
+                            newDate.setSeconds(0);
+                            newDate.setMilliseconds(0);
+                            field.onChange(newDate);
+                            setDateInputText(formatDateForInput(newDate));
+                          };
+
+                          const handleHoursChange = (hStr: string) => {
+                            const h = parseInt(hStr, 10);
+                            const newDate = new Date(currentDate);
+                            newDate.setHours(h);
+                            field.onChange(newDate);
+                            setDateInputText(formatDateForInput(newDate));
+                          };
+
+                          const handleMinutesChange = (mStr: string) => {
+                            const m = parseInt(mStr, 10);
+                            const newDate = new Date(currentDate);
+                            newDate.setMinutes(m);
+                            field.onChange(newDate);
+                            setDateInputText(formatDateForInput(newDate));
+                          };
+
+                          const handleSetPermanent = () => {
+                            const permDate = new Date(2099, 11, 31, 23, 59, 59, 0);
+                            field.onChange(permDate);
+                            setDateInputText(formatDateForInput(permDate));
+                          };
+
+                          return (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel className="text-xs font-medium">到期时间</FormLabel>
+                              <div className="flex items-center gap-1.5">
+                                <FormControl>
+                                  <Input
+                                    value={dateInputText}
+                                    onChange={(e) => {
+                                      setDateInputText(e.target.value);
+                                      const parsed = parseDateFromInput(e.target.value);
+                                      if (parsed) {
+                                        field.onChange(parsed);
+                                      }
+                                    }}
+                                    onBlur={() => {
+                                      const parsed = parseDateFromInput(dateInputText);
+                                      if (parsed) {
+                                        field.onChange(parsed);
+                                        setDateInputText(formatDateForInput(parsed));
+                                      } else if (field.value) {
+                                        setDateInputText(formatDateForInput(field.value));
+                                      }
+                                    }}
+                                    placeholder="YYYY-MM-DD HH:mm"
+                                    disabled={isSubmitting}
+                                    className="font-mono text-xs h-9"
+                                  />
+                                </FormControl>
+                                <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      disabled={isSubmitting}
+                                      title="打开时间选择器"
+                                      className="h-9 w-9 shrink-0"
+                                    >
+                                      <CalendarIcon className="h-4 w-4 opacity-70" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0 flex flex-row" align="end">
+                                    <Calendar
+                                      mode="single"
+                                      selected={field.value}
+                                      onSelect={handleDateChange}
+                                      disabled={(date) => {
+                                        const today = new Date();
+                                        today.setHours(0, 0, 0, 0);
+                                        return date < today;
+                                      }}
+                                      initialFocus
+                                    />
+                                    <div className="flex flex-col justify-between border-l border-border p-3 bg-muted/10 w-36">
+                                      <div className="space-y-3">
+                                        <div className="text-xs font-semibold text-muted-foreground text-center">具体时间</div>
+                                        <div className="flex flex-col gap-2 items-center">
+                                          <div className="flex items-center gap-1">
+                                            <select
+                                              value={String(hours).padStart(2, '0')}
+                                              onChange={(e) => handleHoursChange(e.target.value)}
+                                              disabled={isSubmitting}
+                                              className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
+                                            >
+                                              {Array.from({ length: 24 }, (_, i) => {
+                                                const val = String(i).padStart(2, '0');
+                                                return (
+                                                  <option key={val} value={val}>
+                                                    {val}
+                                                  </option>
+                                                );
+                                              })}
+                                            </select>
+                                            <span className="text-xs font-medium text-muted-foreground">时</span>
+                                          </div>
+                                          <div className="flex items-center gap-1">
+                                            <select
+                                              value={String(minutes).padStart(2, '0')}
+                                              onChange={(e) => handleMinutesChange(e.target.value)}
+                                              disabled={isSubmitting}
+                                              className="border rounded p-1 bg-background text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-ring w-12 text-center"
+                                            >
+                                              {Array.from({ length: 60 }, (_, i) => {
+                                                const val = String(i).padStart(2, '0');
+                                                return (
+                                                  <option key={val} value={val}>
+                                                    {val}
+                                                  </option>
+                                                );
+                                              })}
+                                            </select>
+                                            <span className="text-xs font-medium text-muted-foreground">分</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="w-full text-xs h-7 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/60 hover:bg-purple-50 dark:hover:bg-purple-950/30 font-medium whitespace-nowrap"
+                                        onClick={handleSetPermanent}
+                                      >
+                                        设为永久
+                                      </Button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                              <FormMessage className="text-[11px]" />
+                            </FormItem>
+                          );
+                        }}
+                      />
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 items-start">
+                        <div className="col-span-2">
+                          <FormField
+                            control={form.control}
+                            name="durationValue"
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel className="text-xs font-medium">授权时长</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    placeholder="数字"
+                                    {...field}
+                                    disabled={isSubmitting}
+                                    min={1}
+                                    className="h-9 text-sm"
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-[11px]" />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                        <div>
+                          <FormField
+                            control={form.control}
+                            name="durationUnit"
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel className="text-xs font-medium">单位</FormLabel>
+                                <FormControl>
+                                  <Select
+                                    onValueChange={field.onChange}
+                                    defaultValue={field.value}
+                                    disabled={isSubmitting}
+                                  >
+                                    <SelectTrigger className="h-9 text-sm">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="minutes">分钟</SelectItem>
+                                      <SelectItem value="hours">小时</SelectItem>
+                                      <SelectItem value="days">天</SelectItem>
+                                      <SelectItem value="weeks">周</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </FormControl>
+                                <FormMessage className="text-[11px]" />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="hardwareBindingEnabled"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/10">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-sm font-medium">HWID 硬件设备绑定</FormLabel>
+                          <FormDescription className="text-xs">
+                            启用后，该授权将与首次登录的物理设备严格绑定。
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            disabled={isSubmitting}
+                          />
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
-              </div>
-            )}
 
-            <FormField
-              control={form.control}
-              name="hardwareBindingEnabled"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel className="text-base">HWID 绑定</FormLabel>
-                    <FormDescription>
-                      启用后，授权将与特定的HWID 绑定。
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      disabled={isSubmitting}
+                  {watchHardwareBindingEnabled && globalUnbindEnabled && (
+                    <FormField
+                      control={form.control}
+                      name="allowSelfUnbind"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/20">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-sm font-medium">允许用户端自助换绑设备</FormLabel>
+                            <FormDescription className="text-xs">
+                              允许终端用户在个人控制台自助解绑（遵循系统冷却与限次策略）。
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+                  )}
 
-            {watchHardwareBindingEnabled && globalUnbindEnabled && (
-              <FormField
-                control={form.control}
-                name="allowSelfUnbind"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 bg-muted/20">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-sm font-medium">允许用户端自助换绑设备</FormLabel>
-                      <FormDescription className="text-xs">
-                        允许终端用户在个人控制台自助解绑（遵循系统月度限次与冷却时间策略）。
-                      </FormDescription>
+                  {watchHardwareBindingEnabled && !globalUnbindEnabled && (
+                    <div className="p-2.5 border rounded-lg bg-muted/20 text-xs text-muted-foreground">
+                      提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密将严格执行一机一卡不可换绑。
                     </div>
-                    <FormControl>
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={isSubmitting}
-                      />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            )}
+                  )}
 
-            {watchHardwareBindingEnabled && !globalUnbindEnabled && (
-              <div className="p-2.5 border rounded-lg bg-muted/20 text-xs text-muted-foreground">
-                提示：系统设置中「用户自助换绑策略」当前为关闭状态，该卡密将严格执行一机一卡不可换绑。
+                  <FormField
+                    control={form.control}
+                    name="note"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <FormLabel className="text-xs font-medium">卡密备注 (选填)</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="输入卡密客户说明、订单号或备注..."
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            disabled={isSubmitting}
+                            maxLength={500}
+                            className="h-9 text-sm"
+                          />
+                        </FormControl>
+                        <FormMessage className="text-[11px]" />
+                      </FormItem>
+                    )}
+                  />
+                </TabsContent>
+
+                <TabsContent value="payload" className="space-y-3 mt-0">
+                  <FormField
+                    control={form.control}
+                    name="customPayload"
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <FormLabel className="text-xs font-medium">独立自定义载荷 / JSON (可选)</FormLabel>
+                          <span className="text-[11px] text-muted-foreground">单个卡密专属下发数据</span>
+                        </div>
+                        <FormControl>
+                          <Textarea
+                            placeholder='留空则自动继承所属软件默认配置。填入则单独覆盖，例如: {"hook_rva": "0x1A42E0", "vip_level": 9}'
+                            rows={8}
+                            className="font-mono text-xs leading-relaxed resize-none bg-muted/10"
+                            {...field}
+                            value={field.value || ''}
+                          />
+                        </FormControl>
+                        <div className="rounded-md bg-muted/30 p-2.5 text-[11px] text-muted-foreground leading-normal border border-border/40">
+                          <p className="font-medium text-foreground mb-0.5">优先级说明：</p>
+                          <p>• 留空时，客户端将自动继承软件默认配置（如 RVA 偏移量）。</p>
+                          <p>• 填入 JSON 时，此卡密专属数据将优先下发并深度覆盖软件默认项。</p>
+                        </div>
+                        <FormMessage className="text-[11px]" />
+                      </FormItem>
+                    )}
+                  />
+                </TabsContent>
               </div>
-            )}
+            </Tabs>
+          </div>
 
-            <FormField
-              control={form.control}
-              name="customPayload"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>独立自定义载荷 / JSON (可选)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder='留空则自动继承所属软件默认配置。填入则单独覆盖，例如: {"vip_key": "xxx"}'
-                      rows={3}
-                      className="font-mono text-xs"
-                      {...field}
-                      value={field.value || ''}
-                    />
-                  </FormControl>
-                  <FormDescription>若需要对此卡密单独下发专属密钥或配置，可在此填写 JSON 数据；留空则继承软件默认载荷。</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="note"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>卡密备注 (选填)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder=""
-                      value={field.value || ''}
-                      onChange={field.onChange}
-                      disabled={isSubmitting}
-                      maxLength={500}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <DialogFooter>
+          <DialogFooter className="p-4 px-6 border-t border-border/50 bg-muted/30 shrink-0 flex items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => onOpenChange(false)}
                 disabled={isSubmitting}
+                className="h-9"
               >
                 取消
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting} className="h-9">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

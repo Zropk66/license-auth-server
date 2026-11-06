@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,7 @@ export default function SessionsTable() {
   const [search, setSearch] = useState('');
   const [sessionToKick, setSessionToKick] = useState<Session | null>(null);
   const [isKicking, setIsKicking] = useState(false);
+  const isFetchingRef = useRef(false);
 
   useEffect(() => {
     fetchSessions(true);
@@ -67,14 +68,26 @@ export default function SessionsTable() {
   }, []);
 
   const fetchSessions = async (showLoading = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     if (showLoading) setLoading(true);
+
     try {
       const response = await fetch('/api/admin/sessions');
       const data = await response.json();
 
-      if (response.ok) {
+      if (response.ok && Array.isArray(data)) {
         setSessions(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+          if (
+            prev.length === data.length &&
+            prev.every((item, idx) =>
+              item.id === data[idx].id &&
+              item.lastHeartbeat === data[idx].lastHeartbeat &&
+              item.status === data[idx].status
+            )
+          ) {
+            return prev;
+          }
           return data;
         });
       } else if (showLoading) {
@@ -88,10 +101,9 @@ export default function SessionsTable() {
           description: '获取在线会话列表失败',
           variant: 'destructive',
         });
-      } else {
-        console.warn('Silent refresh sessions failed:', error);
       }
     } finally {
+      isFetchingRef.current = false;
       if (showLoading) setLoading(false);
     }
   };

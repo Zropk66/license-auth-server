@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 import Turnstile from '@/components/turnstile';
 import { useToast } from '@/hooks/use-toast';
+import { useCaptcha } from '@/hooks/use-captcha';
 
 const formSchema = z.object({
   username: z.string().min(3, '用户名至少需要3个字符'),
@@ -24,25 +25,7 @@ export default function AdminLogin() {
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const [enableCaptcha, setEnableCaptcha] = useState(true);
-  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
-
-  useEffect(() => {
-    fetch('/api/settings/public')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && typeof data.enableRecaptcha === 'boolean') {
-          setEnableCaptcha(data.enableRecaptcha);
-        }
-        if (data && typeof data.turnstileSiteKey === 'string') {
-          setTurnstileSiteKey(data.turnstileSiteKey);
-        }
-      })
-      .catch((err) => {
-        console.error('Error fetching settings:', err);
-      });
-  }, []);
+  const { enableCaptcha, turnstileSiteKey, turnstileToken, setTurnstileToken } = useCaptcha();
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),

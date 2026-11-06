@@ -44,7 +44,9 @@ export async function sendAlert(
       let subscribedEvents: string[] = ['all'];
       try {
         subscribedEvents = JSON.parse(channel.events);
-      } catch {}
+      } catch {
+        console.error('Invalid events JSON for channel:', channel.id);
+      }
 
       if (
         !subscribedEvents.includes('all') &&

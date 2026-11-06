@@ -9,8 +9,10 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Key, Copy, Calendar, Server, Smartphone, Loader2, Monitor, Clock, ShieldAlert } from 'lucide-react';
 import { formatDate, cn } from '@/lib/utils';
+import { getLicenseStatus, formatDuration, isExpired } from '@/lib/license-status';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 
 interface UnbindStatus {
   enabled: boolean;
@@ -47,6 +49,7 @@ export default function UserLicenseDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
+  const [ConfirmDialog, confirm] = useConfirm();
   const [license, setLicense] = useState<LicenseDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [unbinding, setUnbinding] = useState(false);
@@ -56,10 +59,7 @@ export default function UserLicenseDetailsPage() {
   const fetchLicenseDetails = async () => {
     setLoading(true);
     try {
-      const [licenseRes, settingsRes] = await Promise.all([
-        fetch(`/api/user/licenses/${params.id}`),
-        fetch('/api/settings/public').catch(() => null),
-      ]);
+      const licenseRes = await fetch(`/api/user/licenses/${params.id}`);
 
       if (!licenseRes.ok) {
         throw new Error('获取授权详情失败');
@@ -68,9 +68,8 @@ export default function UserLicenseDetailsPage() {
       const data = await licenseRes.json();
       setLicense(data);
 
-      if (settingsRes && settingsRes.ok) {
-        const settingsData = await settingsRes.json();
-        setGlobalUnbindEnabled(!!settingsData.unbindEnabled);
+      if (data && data.unbindStatus) {
+        setGlobalUnbindEnabled(!!data.unbindStatus.enabled);
       }
     } catch (err) {
       console.error('Error fetching license details:', err);
@@ -88,9 +87,13 @@ export default function UserLicenseDetailsPage() {
 
   const handleSelfUnbind = async () => {
     if (!license) return;
-    if (!confirm('确定要自助解绑当前绑定的HWID设备吗？\n解绑后关联的在线会话将被强制下线，您可在新电脑上重新激活绑定。')) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: '解除设备绑定',
+      description: '确定要自助解绑当前绑定的HWID设备吗？\n解绑后关联的在线会话将被强制下线，您可在新电脑上重新激活绑定。',
+      confirmText: '确定解绑',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     setUnbinding(true);
     try {
@@ -127,42 +130,12 @@ export default function UserLicenseDetailsPage() {
     });
   };
 
-  const isExpired = (date: string) => {
-    return new Date(date) < new Date();
-  };
-
-  // Calculate the days remaining until expiration
   const getDaysRemaining = (expirationDate: string) => {
     const now = new Date();
     const expiry = new Date(expirationDate);
     const diffTime = expiry.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays > 0 ? diffDays : 0;
-  };
-
-  const getLicenseStatus = () => {
-    if (!license) return { label: "未知", variant: "outline" as const, className: "" };
-    if (license.status === "revoked") {
-      return { label: "撤销", variant: "destructive" as const, className: "" };
-    } else if (license.status === "suspended") {
-      return { label: "冻结", variant: "secondary" as const, className: "" };
-    } else if (license.status === "unactivated") {
-      return { label: "待激活", variant: "outline" as const, className: "" };
-    } else if (isExpired(license.expirationDate)) {
-      return { label: "到期", variant: "destructive" as const, className: "" };
-    } else if (new Date(license.expirationDate).getFullYear() >= 2099) {
-      return { label: "永久", variant: "default" as const, className: "bg-purple-600 hover:bg-purple-700 text-white" };
-    } else {
-      return { label: "有效", variant: "default" as const, className: "" };
-    }
-  };
-
-  const formatDuration = (minutes?: number | null) => {
-    if (minutes === undefined || minutes === null) return '-';
-    if (minutes === 0) return '0分钟';
-    if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}天`;
-    if (minutes % 60 === 0) return `${minutes / (60)}小时`;
-    return `${minutes}分钟`;
   };
 
   const getLicenseDurationStats = () => {
@@ -194,7 +167,7 @@ export default function UserLicenseDetailsPage() {
     };
   };
 
-  const status = getLicenseStatus();
+  const status = getLicenseStatus(license);
 
   return (
     <UserLayout>
@@ -521,6 +494,7 @@ export default function UserLicenseDetailsPage() {
           </Card>
         </div>
       )}
+      <ConfirmDialog />
     </UserLayout>
   );
 }

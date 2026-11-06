@@ -40,6 +40,10 @@ export default function ManagersPage() {
   const { toast } = useToast();
   const [managers, setManagers] = useState<Manager[]>([]);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    document.title = '权限管理 | 管理员后台';
+  }, []);
   const [loading, setLoading] = useState(true);
   const [authChecking, setAuthChecking] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
@@ -176,7 +180,7 @@ export default function ManagersPage() {
         </div>
         <h2 className="text-2xl font-bold tracking-tight mb-2">访问被拒绝</h2>
         <p className="text-muted-foreground mb-6">
-          管理员账号管理是受限制的功能。只有系统所有者 (owner) 才能查看或管理此页面。
+          管理员账号管理是受限制的功能。只有超级管理员才能查看或管理此页面。
         </p>
         <Button asChild>
           <a href="/admin/dashboard">返回仪表盘</a>
@@ -187,15 +191,20 @@ export default function ManagersPage() {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">管理员管理</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">权限管理</h1>
+          <p className="text-muted-foreground text-sm">
+            管理后台账号与角色权限。新账号默认为管理员，超级管理员可将其提升。
+          </p>
+        </div>
       </div>
 
       <Card>
         <CardHeader className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
           <div>
-            <CardTitle className="text-xl">管理员列表</CardTitle>
-            <CardDescription>添加、编辑或删除系统管理员账号，分配角色权限。</CardDescription>
+            <CardTitle className="text-base">管理员列表</CardTitle>
+            <CardDescription className="text-xs">添加、编辑或删除系统管理员账号，分配角色权限。</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -269,7 +278,7 @@ export default function ManagersPage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant={manager.role === 'owner' ? 'default' : 'secondary'}>
-                            {manager.role === 'owner' ? '系统所有者 (owner)' : '管理员 (admin)'}
+                            {manager.role === 'owner' ? '超级管理员' : '管理员'}
                           </Badge>
                         </TableCell>
                         <TableCell>{formatDate(manager.createdAt)}</TableCell>

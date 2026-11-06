@@ -101,7 +101,28 @@ export async function validateAdminAuth(req: NextRequest) {
     });
   }
 
-  return { payload };
+  /* 从数据库读取当前角色，保证降级/删除即时生效，不信任 JWT 内的旧角色 */
+  const { prisma } = await import('@/lib/prisma');
+  const admin = await prisma.admin.findUnique({
+    where: { id: payload.id },
+    select: { id: true, username: true, role: true },
+  });
+
+  if (!admin) {
+    return new NextResponse(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  return {
+    payload: {
+      id: admin.id,
+      username: admin.username,
+      role: admin.role,
+      type: 'admin' as const,
+    },
+  };
 }
 
 export async function validateUserAuth(req: NextRequest) {

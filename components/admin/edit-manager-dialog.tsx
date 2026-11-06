@@ -156,8 +156,8 @@ export default function EditManagerDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="admin">管理员 (admin)</SelectItem>
-                      <SelectItem value="owner">系统所有者 (owner)</SelectItem>
+                      <SelectItem value="admin">管理员</SelectItem>
+                      <SelectItem value="owner">超级管理员</SelectItem>
                     </SelectContent>
                   </Select>
                   {isSelf && (

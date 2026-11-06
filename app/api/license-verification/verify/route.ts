@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import vm from 'node:vm';
 import { signPayload, getOrCreateKeyPair } from '@/lib/crypto-sign';
 import { sealPayload, composeLicensePayload, mergeCustomPayloads, encodeStatusFlags, attachStatusFlags } from '@/lib/payload-seal';
 import prisma from '@/lib/prisma';
@@ -561,6 +562,59 @@ export async function POST(req: NextRequest) {
       activeLicense.customPayload
     );
 
+    let finalPayloadString = effectiveCustomPayload;
+
+    // 如果所属软件配置了自定义动态 JS 钩子脚本，在轻量沙箱中执行
+    const hookScript = (boundSoftware as any)?.hookScript;
+    if (hookScript && typeof hookScript === 'string' && hookScript.trim()) {
+      try {
+        let payloadObj: Record<string, unknown> = {};
+        if (effectiveCustomPayload) {
+          try {
+            const parsed = JSON.parse(effectiveCustomPayload);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              payloadObj = parsed as Record<string, unknown>;
+            } else {
+              payloadObj = { value: parsed };
+            }
+          } catch {
+            payloadObj = { raw: effectiveCustomPayload };
+          }
+        }
+
+        const sandbox = {
+          req: {
+            ...body,
+            licenseKey,
+            hwid,
+            deviceName,
+            nonce,
+            timestamp,
+            softwareName,
+            version,
+            versionCode,
+            ipAddress,
+          },
+          payload: payloadObj,
+          BigInt,
+          console: {
+            log: (...args: any[]) => console.log(`[HookScript:${softwareName}]`, ...args),
+            warn: (...args: any[]) => console.warn(`[HookScript:${softwareName}]`, ...args),
+            error: (...args: any[]) => console.error(`[HookScript:${softwareName}]`, ...args),
+          },
+        };
+
+        const context = vm.createContext(sandbox);
+        vm.runInContext(hookScript, context, { timeout: 50 });
+
+        if (sandbox.payload && typeof sandbox.payload === 'object') {
+          finalPayloadString = JSON.stringify(sandbox.payload);
+        }
+      } catch (scriptErr: any) {
+        console.error(`[HookScript:${softwareName}] 执行错误:`, scriptErr?.message || scriptErr);
+      }
+    }
+
     // 授权状态并入载荷，处于签名与加密覆盖范围内，客户端不必再信任明文 status
     const statusFlags = encodeStatusFlags(
       activeLicense.status,
@@ -571,7 +625,7 @@ export async function POST(req: NextRequest) {
       composeLicensePayload({
         issuedAt: Date.now(),
         expiresAt: expiresAtMs,
-        customPayload: attachStatusFlags(effectiveCustomPayload, statusFlags),
+        customPayload: attachStatusFlags(finalPayloadString, statusFlags),
       }),
       activeLicense.licenseKey,
       bindingMachineId,

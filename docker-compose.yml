@@ -20,8 +20,8 @@ services:
         condition: service_completed_successfully
     restart: always
     healthcheck:
-      # 根路径被 middleware 拦成 403，探针须打公开接口才会真正反映存活状态
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/settings/public || exit 1"]
+      # 根路径被 middleware 拦成 403，探针打公开存活接口 /api/health
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

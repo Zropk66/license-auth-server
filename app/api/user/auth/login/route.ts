@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isValidTurnstileToken } from '@/lib/utils';
+import { isValidTurnstileToken } from '@/lib/server/turnstile';
 import { signJWT } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { userLoginSchema } from '@/lib/validations';

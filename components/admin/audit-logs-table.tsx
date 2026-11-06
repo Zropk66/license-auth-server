@@ -102,7 +102,7 @@ const ACTION_MAP: Record<string, { label: string; variant: "default" | "secondar
   create_manager: { label: "创建管理员", variant: "default" },
   edit_manager: { label: "编辑管理员", variant: "outline" },
   delete_manager: { label: "删除管理员", variant: "destructive" },
-  owner_created: { label: "初始化系统所有者", variant: "default" },
+  owner_created: { label: "初始化超级管理员", variant: "default" },
   login_success: { label: "管理员登录成功", variant: "default" },
   login_failed: { label: "管理员登录失败", variant: "destructive" },
   admin_logout: { label: "管理员登出", variant: "outline" },
@@ -170,7 +170,7 @@ const DETAIL_VAL_MAP: Record<string, string> = {
   weeks: "周",
   true: "是",
   false: "否",
-  owner: "系统所有者",
+  owner: "超级管理员",
   admin: "管理员",
   ip: "IP 地址",
   hwid: "HWID",
@@ -199,6 +199,15 @@ const REASON_MAP: Record<string, string> = {
 export default function AuditLogsTable() {
   const { toast } = useToast();
   const router = useRouter();
+
+  const [isAdminRole, setIsAdminRole] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/admin/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setIsAdminRole(data?.role === 'owner'))
+      .catch(() => {});
+  }, []);
 
   const [activeTab, setActiveTab] = useState<'verification' | 'audit'>('verification');
   const [softwares, setSoftwares] = useState<{ id: string; name: string }[]>([]);
@@ -676,8 +685,12 @@ export default function AuditLogsTable() {
           <Card>
             <CardHeader className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
               <div>
-                <CardTitle className="text-xl">管理员操作审计记录</CardTitle>
-                <CardDescription>审计系统管理员执行的操作变更</CardDescription>
+                <CardTitle className="text-base">管理员操作审计记录</CardTitle>
+                <CardDescription className="text-xs">
+                  {isAdminRole
+                    ? '审计系统管理员执行的操作变更'
+                    : '您当前为管理员角色，仅显示您本人执行的操作记录'}
+                </CardDescription>
               </div>
               <div className="flex items-center gap-2">
                 <Button

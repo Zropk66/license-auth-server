@@ -18,7 +18,7 @@ export async function PUT(
 
   if (payload.role !== 'owner') {
     return NextResponse.json(
-      { error: '只有系统所有者（owner）可以修改管理员信息' },
+      { error: '只有超级管理员可以修改管理员信息' },
       { status: 403 }
     );
   }
@@ -54,6 +54,21 @@ export async function PUT(
         { error: '为了防止系统锁定，您不能修改自己的角色' },
         { status: 400 }
       );
+    }
+
+    /* 系统必须保留至少一名超级管理员：降级最后一名 owner 时拦截 */
+    if (
+      targetManager.role === 'owner' &&
+      role &&
+      role !== 'owner'
+    ) {
+      const ownerCount = await prisma.admin.count({ where: { role: 'owner' } });
+      if (ownerCount <= 1) {
+        return NextResponse.json(
+          { error: '系统必须保留至少一名超级管理员，无法降级最后一个超级管理员账号' },
+          { status: 400 }
+        );
+      }
     }
 
     const updateData: { password?: string; role?: string } = {};
@@ -107,7 +122,7 @@ export async function DELETE(
 
   if (payload.role !== 'owner') {
     return NextResponse.json(
-      { error: '只有系统所有者（owner）可以删除管理员账号' },
+      { error: '只有超级管理员可以删除管理员账号' },
       { status: 403 }
     );
   }
@@ -132,6 +147,17 @@ export async function DELETE(
         { error: '管理员不存在' },
         { status: 404 }
       );
+    }
+
+    /* 系统必须保留至少一名超级管理员：删除最后一名 owner 时拦截 */
+    if (targetManager.role === 'owner') {
+      const ownerCount = await prisma.admin.count({ where: { role: 'owner' } });
+      if (ownerCount <= 1) {
+        return NextResponse.json(
+          { error: '系统必须保留至少一名超级管理员，无法删除最后一个超级管理员账号' },
+          { status: 400 }
+        );
+      }
     }
 
     await prisma.admin.delete({

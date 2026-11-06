@@ -61,7 +61,7 @@ export default function UserLayout({ children }: UserLayoutProps) {
   );
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    <div className="fixed inset-0 flex flex-col overflow-hidden">
       {/* Mobile nav */}
       <header className="sticky top-0 z-50 flex h-14 shrink-0 items-center gap-4 border-b bg-background px-4 md:px-6">
         <Sheet open={open} onOpenChange={setOpen}>

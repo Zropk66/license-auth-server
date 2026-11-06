@@ -114,10 +114,13 @@ export async function PATCH(
     if (parseResult.data.customPayload !== undefined) {
       updateData.customPayload = parseResult.data.customPayload ? parseResult.data.customPayload.trim() : null;
     }
+    if (parseResult.data.hookScript !== undefined) {
+      updateData.hookScript = parseResult.data.hookScript ? parseResult.data.hookScript.trim() : null;
+    }
 
     const updated = await prisma.software.update({
       where: { id },
-      data: updateData,
+      data: updateData as any,
     });
 
     await logAction({

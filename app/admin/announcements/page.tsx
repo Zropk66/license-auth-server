@@ -1,17 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
-import { Megaphone, Plus, Edit, Trash2, RefreshCw } from 'lucide-react';
+import { Megaphone, Plus, Edit, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
+import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle';
 import AddAnnouncementDialog, { AnnouncementItem } from '@/components/admin/add-announcement-dialog';
 
 export default function AnnouncementsPage() {
+  useEffect(() => {
+    document.title = '系统公告 | 管理员后台';
+  }, []);
+
   const { toast } = useToast();
+  const [ConfirmDialog, confirm] = useConfirm();
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -39,26 +47,16 @@ export default function AnnouncementsPage() {
     fetchAnnouncements();
   }, []);
 
-  const handleToggle = async (a: AnnouncementItem) => {
-    try {
-      const res = await fetch(`/api/admin/announcements/${a.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !a.enabled }),
-      });
-      if (!res.ok) throw new Error('更新状态失败');
-      fetchAnnouncements();
-    } catch (err: any) {
-      toast({
-        title: '错误',
-        description: err.message || '操作失败',
-        variant: 'destructive',
-      });
-    }
-  };
+  const handleToggle = useOptimisticToggle<any>(setAnnouncements, '/api/admin/announcements');
 
   const handleDelete = async (a: AnnouncementItem) => {
-    if (!confirm(`确定要删除公告 [${a.title}] 吗？`)) return;
+    const confirmed = await confirm({
+      title: '删除公告',
+      description: `确定要删除公告 [${a.title}] 吗？此操作不可恢复。`,
+      confirmText: '确定删除',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/admin/announcements/${a.id}`, {
@@ -144,6 +142,7 @@ export default function AnnouncementsPage() {
                   {loading ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-6 text-muted-foreground text-xs">
+                        <Loader2 className="h-4 w-4 mx-auto mb-1 animate-spin" />
                         正在加载公告数据...
                       </TableCell>
                     </TableRow>
@@ -206,6 +205,8 @@ export default function AnnouncementsPage() {
         announcementToEdit={announcementToEdit}
         onSuccess={fetchAnnouncements}
       />
+
+      <ConfirmDialog />
     </>
   );
 }

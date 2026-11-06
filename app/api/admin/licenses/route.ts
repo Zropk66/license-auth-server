@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-import { generateLicenseKey } from '@/lib/utils';
+import { generateLicenseKey } from '@/lib/server/crypto';
 import { logAction } from '@/lib/audit';
 import { createLicenseSchema, paginationSchema } from '@/lib/validations';
 import { Prisma } from '@prisma/client';

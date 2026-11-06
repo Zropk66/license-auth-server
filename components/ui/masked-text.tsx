@@ -66,11 +66,13 @@ export function MaskedText({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
 
-      try {
-        if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        try {
           navigator.vibrate(40);
+        } catch {
+          /* 震动反馈失败可忽略 */
         }
-      } catch {}
+      }
 
       toast({
         title: '已复制完整内容到剪贴板',

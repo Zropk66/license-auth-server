@@ -7,70 +7,64 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { AppWindow, Plus, Edit, Trash2, RefreshCw, Search, Key, Package } from 'lucide-react';
+import { AppWindow, Plus, Edit, Trash2, RefreshCw, Search, Key, Package, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatDate } from '@/lib/utils';
-import CreateSoftwareDialog from '@/components/admin/create-software-dialog';
-import EditSoftwareDialog, { SoftwareItem } from '@/components/admin/edit-software-dialog';
+import { useConfirm } from '@/hooks/use-confirm';
+import { useOptimisticToggle } from '@/hooks/use-optimistic-toggle';
+import SoftwareDialog, { SoftwareItem } from '@/components/admin/software-dialog';
 
 export default function SoftwaresPage() {
   const { toast } = useToast();
+  const [ConfirmDialog, confirm] = useConfirm();
   const [softwares, setSoftwares] = useState<SoftwareItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [softwareToEdit, setSoftwareToEdit] = useState<SoftwareItem | null>(null);
 
-  const fetchSoftwares = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    document.title = '软件管理 | 管理员后台';
+  }, []);
+
+  const fetchSoftwares = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       const res = await fetch('/api/admin/softwares');
       if (!res.ok) throw new Error('获取软件列表失败');
       const data = await res.json();
       setSoftwares(data);
     } catch (err: any) {
-      toast({
-        title: '错误',
-        description: err.message || '加载失败',
-        variant: 'destructive',
-      });
+      if (showLoading) {
+        toast({
+          title: '错误',
+          description: err.message || '加载失败',
+          variant: 'destructive',
+        });
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [toast]);
 
   useEffect(() => {
-    fetchSoftwares();
+    fetchSoftwares(true);
   }, [fetchSoftwares]);
 
-  const handleToggle = async (s: SoftwareItem) => {
-    try {
-      const res = await fetch(`/api/admin/softwares/${s.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !s.enabled }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || '更新状态失败');
-      }
-      fetchSoftwares();
-    } catch (err: any) {
-      toast({
-        title: '错误',
-        description: err.message || '操作失败',
-        variant: 'destructive',
-      });
-    }
-  };
+  const handleToggle = useOptimisticToggle(setSoftwares, '/api/admin/softwares');
 
   const handleDelete = async (s: SoftwareItem) => {
     const hasRelations = (s.licenseCount || 0) > 0 || (s.versionCount || 0) > 0;
     const msg = hasRelations
-      ? `确定要删除所属软件「${s.name}」吗？\n\n该软件下有 ${s.licenseCount || 0} 个授权卡密和 ${s.versionCount || 0} 个版本记录，删除后将一并清除所有关联数据（含会话和硬件绑定历史），此操作不可恢复！`
-      : `确定要删除所属软件「${s.name}」吗？`;
-    if (!confirm(msg)) return;
+      ? `确定要删除软件「${s.name}」吗？\n\n该软件下有 ${s.licenseCount || 0} 个授权卡密和 ${s.versionCount || 0} 个版本记录，删除后将一并清除所有关联数据（含会话和硬件绑定历史），此操作不可恢复！`
+      : `确定要删除软件「${s.name}」吗？`;
+    const confirmed = await confirm({
+      title: '删除软件',
+      description: msg,
+      confirmText: '确定删除',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/admin/softwares/${s.id}`, {
@@ -81,8 +75,7 @@ export default function SoftwaresPage() {
         throw new Error(data.error || '删除失败');
       }
       toast({ title: '已删除', description: `软件「${s.name}」已删除` });
-      fetchSoftwares();
-    } catch (err: any) {
+      fetchSoftwares();    } catch (err: any) {
       toast({
         title: '删除失败',
         description: err.message || '操作失败',
@@ -105,17 +98,23 @@ export default function SoftwaresPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">所属软件管理</h1>
+            <h1 className="text-2xl font-bold tracking-tight">软件管理</h1>
             <p className="text-muted-foreground text-sm">
-              管理系统接入的所有独立软件产品与插件项目。创建或编辑授权卡密时，仅可选择此处已启用的所属软件。
+              管理系统接入的所有独立软件产品与插件项目。创建或编辑授权卡密时，仅可选择此处已启用的软件。
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={fetchSoftwares} disabled={loading}>
+            <Button variant="outline" size="sm" onClick={() => fetchSoftwares(true)} disabled={loading}>
               <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               刷新
             </Button>
-            <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setSoftwareToEdit(null);
+                setDialogOpen(true);
+              }}
+            >
               <Plus className="h-4 w-4 mr-1" />
               添加软件
             </Button>
@@ -148,7 +147,7 @@ export default function SoftwaresPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>所属软件名称</TableHead>
+                    <TableHead>软件名称</TableHead>
                     <TableHead>标识代码 (Code)</TableHead>
                     <TableHead>说明描述</TableHead>
                     <TableHead>版本号限制</TableHead>
@@ -163,6 +162,7 @@ export default function SoftwaresPage() {
                   {loading ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-6 text-muted-foreground text-xs">
+                        <Loader2 className="h-4 w-4 mx-auto mb-1 animate-spin" />
                         正在加载软件列表...
                       </TableCell>
                     </TableRow>
@@ -170,7 +170,7 @@ export default function SoftwaresPage() {
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-muted-foreground text-xs">
                         <AppWindow className="h-8 w-8 mx-auto text-muted-foreground mb-2 opacity-50" />
-                        {search ? '未找到符合条件的所属软件' : '暂无所属软件，点击右上角「添加软件」立即创建。'}
+                        {search ? '未找到符合条件的软件' : '暂无软件，点击右上角「添加软件」立即创建。'}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -236,7 +236,7 @@ export default function SoftwaresPage() {
                               className="h-7 w-7"
                               onClick={() => {
                                 setSoftwareToEdit(s);
-                                setEditDialogOpen(true);
+                                setDialogOpen(true);
                               }}
                             >
                               <Edit className="h-3.5 w-3.5" />
@@ -263,18 +263,14 @@ export default function SoftwaresPage() {
         </Card>
       </div>
 
-      <CreateSoftwareDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        onSuccess={fetchSoftwares}
-      />
-
-      <EditSoftwareDialog
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
+      <SoftwareDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
         software={softwareToEdit}
         onSuccess={fetchSoftwares}
       />
+
+      <ConfirmDialog />
     </>
   );
 }

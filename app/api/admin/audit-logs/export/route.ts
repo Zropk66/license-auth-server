@@ -49,7 +49,7 @@ const ACTION_MAP: Record<string, string> = {
   create_manager: '创建管理员',
   edit_manager: '编辑管理员',
   delete_manager: '删除管理员',
-  owner_created: '初始化系统所有者',
+  owner_created: '初始化超级管理员',
   login_success: '管理员登录成功',
   login_failed: '管理员登录失败',
   admin_logout: '管理员登出',

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, Search, RefreshCcw, Copy, Key, Download, Layers } from 'lucide-react';
 import { formatDate, formatLicenseRemaining } from '@/lib/utils';
+import { getLicenseStatus, formatDuration } from '@/lib/license-status';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import CreateLicenseDialog from './create-license-dialog';
@@ -197,33 +198,6 @@ export default function LicensesTable() {
     setLicenses(prev => [newLicense, ...prev]);
   };
 
-  const getLicenseStatus = (license: License) => {
-    if (license.status === "revoked") {
-      return { label: "撤销", variant: "destructive" as const, className: "" };
-    } else if (license.status === "suspended") {
-      return { label: "冻结", variant: "secondary" as const, className: "" };
-    } else if (license.status === "unactivated") {
-      return { label: "待激活", variant: "outline" as const, className: "" };
-    } else if (isExpired(license.expirationDate)) {
-      return { label: "到期", variant: "destructive" as const, className: "" };
-    } else if (new Date(license.expirationDate).getFullYear() >= 2099) {
-      return { label: "永久", variant: "default" as const, className: "bg-purple-600 hover:bg-purple-700 text-white" };
-    } else {
-      return { label: "有效", variant: "default" as const, className: "" };
-    }
-  };
-
-  const formatDuration = (minutes?: number | null) => {
-    if (!minutes) return '-';
-    if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}天`;
-    if (minutes % 60 === 0) return `${minutes / 60}小时`;
-    return `${minutes}分钟`;
-  };
-
-  const isExpired = (date: string) => {
-    return new Date(date) < new Date();
-  };
-  
   return (
     <>
       <Card>

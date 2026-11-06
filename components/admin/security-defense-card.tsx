@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { SettingCard } from '@/components/admin/setting-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +19,6 @@ export default function SecurityDefenseCard() {
   const [autoBlacklistThreshold, setAutoBlacklistThreshold] = useState('20');
   const [riskFailMax, setRiskFailMax] = useState('5');
   const [riskLockMin, setRiskLockMin] = useState('30');
-  const [riskBogusHwidBlock, setRiskBogusHwidBlock] = useState(true);
 
   const fetchSettings = async () => {
     setLoading(true);
@@ -34,7 +33,6 @@ export default function SecurityDefenseCard() {
       const threshold = data.find((s) => s.key === 'security_auto_blacklist_threshold')?.value || '20';
       const failMax = data.find((s) => s.key === 'risk_license_fail_max')?.value || '5';
       const lockMin = data.find((s) => s.key === 'risk_license_lock_min')?.value || '30';
-      const bogusFlag = data.find((s) => s.key === 'risk_bogus_hwid_block')?.value;
 
       setEnforceNonce(nonce);
       setEnforceStrongPassword(strongPass);
@@ -42,7 +40,6 @@ export default function SecurityDefenseCard() {
       setAutoBlacklistThreshold(threshold);
       setRiskFailMax(failMax);
       setRiskLockMin(lockMin);
-      setRiskBogusHwidBlock(bogusFlag === undefined ? true : bogusFlag === 'true');
     } catch (err: any) {
       toast({
         title: '错误',
@@ -81,7 +78,6 @@ export default function SecurityDefenseCard() {
             { key: 'security_auto_blacklist_threshold', value: autoBlacklistThreshold },
             { key: 'risk_license_fail_max', value: String(failMaxNum) },
             { key: 'risk_license_lock_min', value: String(lockMinNum) },
-            { key: 'risk_bogus_hwid_block', value: String(riskBogusHwidBlock) },
           ],
         }),
       });
@@ -105,21 +101,12 @@ export default function SecurityDefenseCard() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-primary" />
-          <div>
-            <CardTitle className="text-base">安全防护与防重放 (Anti-Replay & Defense)</CardTitle>
-            <CardDescription className="text-xs">
-              配置 Nonce 随机数防重放规则、时间戳容差窗口及触发暴力攻击时的自适应自动拉黑阈值。
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent>
-        {loading ? (
+    <SettingCard
+      title="安全防护与防重放"
+      description="配置 Nonce 随机数防重放规则、时间戳容差窗口及自适应自动拉黑阈值。"
+      icon={ShieldCheck}
+    >
+      {loading ? (
           <div className="py-6 text-center text-xs text-muted-foreground">
             正在加载安全防御配置...
           </div>
@@ -210,16 +197,6 @@ export default function SecurityDefenseCard() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between border rounded-lg p-3">
-              <div className="space-y-0.5">
-                <Label className="text-sm font-medium">拦截伪造设备标识</Label>
-                <p className="text-xs text-muted-foreground">
-                  开启后拒绝全零、全 F、单一重复字符、沙箱默认指纹等明显伪造的 HWID。
-                </p>
-              </div>
-              <Switch checked={riskBogusHwidBlock} onCheckedChange={setRiskBogusHwidBlock} />
-            </div>
-
             <div className="flex justify-end pt-2">
               <Button type="submit" size="sm" disabled={saving}>
                 {saving ? (
@@ -232,7 +209,6 @@ export default function SecurityDefenseCard() {
             </div>
           </form>
         )}
-      </CardContent>
-    </Card>
+    </SettingCard>
   );
 }

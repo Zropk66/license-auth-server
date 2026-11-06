@@ -35,7 +35,8 @@ import {
   ShieldAlert,
   Layers,
 } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
+import { getLicenseStatus, formatDuration } from '@/lib/license-status';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import LicenseDetailsDialog from './license-details-dialog';
@@ -150,31 +151,6 @@ export default function UserDetailsDialog({
     } finally {
       setIsDeleting(false);
     }
-  };
-
-  const formatLicenseDuration = (minutes?: number | null) => {
-    if (minutes === undefined || minutes === null) return '-';
-    if (minutes === 0) return '0分钟';
-    if (minutes % (24 * 60) === 0) return `${minutes / (24 * 60)}天`;
-    if (minutes % 60 === 0) return `${minutes / 60}小时`;
-    return `${minutes}分钟`;
-  };
-
-  const getLicenseStatus = (license: LicenseItem) => {
-    const isExp = new Date(license.expirationDate) < new Date();
-    if (license.status === 'revoked') {
-      return <Badge variant="destructive" className="text-[10px]">已撤销</Badge>;
-    }
-    if (license.status === 'suspended') {
-      return <Badge variant="outline" className="text-[10px] text-yellow-600 border-yellow-600 bg-yellow-500/10">已冻结</Badge>;
-    }
-    if (license.status === 'unactivated') {
-      return <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-600 bg-blue-500/10">待激活</Badge>;
-    }
-    if (isExp) {
-      return <Badge variant="outline" className="text-[10px] text-rose-600 border-rose-600 bg-rose-500/10">已过期</Badge>;
-    }
-    return <Badge variant="default" className="text-[10px] bg-emerald-600 hover:bg-emerald-700">有效</Badge>;
   };
 
   const initialLetter = (user?.username || 'U').charAt(0).toUpperCase();
@@ -300,11 +276,18 @@ export default function UserDetailsDialog({
                                   <span className="sr-only">复制卡密</span>
                                 </Button>
                               </div>
-                              {getLicenseStatus(lic)}
+                              {(() => {
+                                const st = getLicenseStatus(lic);
+                                return (
+                                  <Badge variant={st.variant} className={cn("text-[10px]", st.className)}>
+                                    {st.label}
+                                  </Badge>
+                                );
+                              })()}
                             </div>
                             <div className="text-[10px] text-muted-foreground flex items-center gap-3 flex-wrap">
                               <span>
-                                类型: {lic.licenseType === 'duration' ? `激活卡 (${formatLicenseDuration(lic.duration)})` : '即时卡'}
+                                类型: {lic.licenseType === 'duration' ? `激活卡 (${formatDuration(lic.duration)})` : '即时卡'}
                               </span>
                               <span>
                                 到期: {new Date(lic.expirationDate).getFullYear() >= 2099 ? '永久有效' : formatDate(lic.expirationDate)}

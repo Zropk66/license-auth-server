@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-import { generateUserHash } from '@/lib/utils';
+import { generateUserHash } from '@/lib/server/crypto';
 import { createUserSchema, paginationSchema } from '@/lib/validations';
 
 export async function GET(req: NextRequest) {

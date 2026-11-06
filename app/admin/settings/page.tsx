@@ -12,6 +12,9 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SettingCard } from '@/components/admin/setting-card';
+import { Sliders } from 'lucide-react';
 import NotificationChannelsCard from '@/components/admin/notification-channels-card';
 import UnbindPolicyCard from '@/components/admin/unbind-policy-card';
 import SecurityDefenseCard from '@/components/admin/security-defense-card';
@@ -71,6 +74,10 @@ export default function SettingsPage() {
   const [hasTurnstileKeys, setHasTurnstileKeys] = useState(true);
 
   useEffect(() => {
+    document.title = '系统设置 | 管理员后台';
+  }, []);
+
+  useEffect(() => {
     fetch('/api/admin/me')
       .then((res) => res.json())
       .then((data) => {
@@ -98,9 +105,9 @@ export default function SettingsPage() {
   useEffect(() => {
     async function fetchSettings() {
       try {
-        const [settingsRes, publicRes] = await Promise.all([
+        const [settingsRes, captchaRes] = await Promise.all([
           fetch('/api/admin/settings'),
-          fetch('/api/settings/public'),
+          fetch('/api/auth/captcha-config'),
         ]);
 
         if (!settingsRes.ok) {
@@ -108,10 +115,10 @@ export default function SettingsPage() {
         }
 
         const data: Setting[] = await settingsRes.json();
-        const publicData = await publicRes.json();
+        const captchaData = await captchaRes.json();
 
-        if (publicData && typeof publicData.turnstileSiteKey === 'string') {
-          setHasTurnstileKeys(!!publicData.turnstileSiteKey);
+        if (captchaData && typeof captchaData.configured === 'boolean') {
+          setHasTurnstileKeys(captchaData.configured);
         }
 
         const heartbeat = data.find(s => s.key === 'heartbeat_interval')?.value || '30';
@@ -194,23 +201,15 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        {/* 1. 多通道实时告警与推送 */}
-        <NotificationChannelsCard />
+        <Tabs defaultValue="session" className="space-y-4">
+          <TabsList className="grid grid-cols-3 max-w-[420px] h-9">
+            <TabsTrigger value="session" className="text-xs">会话与策略</TabsTrigger>
+            <TabsTrigger value="defense" className="text-xs">安全防护</TabsTrigger>
+            <TabsTrigger value="ops" className="text-xs">运维通知</TabsTrigger>
+          </TabsList>
 
-        {/* 2. 用户自助换绑策略 */}
-        <UnbindPolicyCard />
-
-        {/* 3. 安全防护与防重放 */}
-        <SecurityDefenseCard />
-
-        {/* 4. 速率限制策略 */}
-        <RateLimitCard />
-
-        {/* 5. 日志自动清理 */}
-        <LogCleanupCard />
-
-        {/* 4. 全局客户端与会话参数 */}
-        <Card>
+          <TabsContent value="session" className="space-y-4">
+            <Card>
           <CardHeader>
             <CardTitle className="text-base">全局客户端与会话参数</CardTitle>
             <CardDescription className="text-xs">
@@ -362,6 +361,19 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+            <UnbindPolicyCard />
+          </TabsContent>
+
+          <TabsContent value="defense" className="space-y-4">
+            <SecurityDefenseCard />
+            <RateLimitCard />
+          </TabsContent>
+
+          <TabsContent value="ops" className="space-y-4">
+            <NotificationChannelsCard />
+            <LogCleanupCard />
+          </TabsContent>
+        </Tabs>
       </div>
     </>
   );

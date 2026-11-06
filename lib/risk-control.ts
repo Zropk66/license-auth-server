@@ -53,8 +53,7 @@ async function getRiskConfig(): Promise<RiskConfig> {
 }
 
 export async function isBogusHwidBlockEnabled(): Promise<boolean> {
-  const config = await getRiskConfig();
-  return config.blockBogusHwid;
+  return true;
 }
 
 export function isBogusHwid(hwid?: string | null): { bogus: boolean; reason?: string } {

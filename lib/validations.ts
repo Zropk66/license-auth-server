@@ -114,6 +114,7 @@ export const createSoftwareSchema = z.object({
   minVersionCode: z.number().int('最低版本号必须为整数').min(0, '最低版本号不能小于0').optional().nullable(),
   maxVersionCode: z.number().int('最高版本号必须为整数').min(0, '最高版本号不能小于0').optional().nullable(),
   customPayload: jsonPayloadSchema,
+  hookScript: z.string().max(20000, '钩子脚本不能超过20000个字符').optional().nullable(),
 });
 
 // Software update
@@ -125,6 +126,7 @@ export const updateSoftwareSchema = z.object({
   minVersionCode: z.number().int('最低版本号必须为整数').min(0, '最低版本号不能小于0').optional().nullable(),
   maxVersionCode: z.number().int('最高版本号必须为整数').min(0, '最高版本号不能小于0').optional().nullable(),
   customPayload: jsonPayloadSchema,
+  hookScript: z.string().max(20000, '钩子脚本不能超过20000个字符').optional().nullable(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'No fields to update' }
@@ -155,7 +157,7 @@ export const updateSoftwareVersionSchema = createSoftwareVersionSchema
 export const createManagerSchema = z.object({
   username: z.string().min(3, '管理员用户名至少3个字符').max(100),
   password: z.string().min(6, '管理员密码长度至少为6位').max(200),
-  role: z.enum(['admin', 'owner']),
+  role: z.literal('admin').default('admin'),
 });
 
 // Manager update

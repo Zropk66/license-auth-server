@@ -149,7 +149,7 @@ function ActivityBarChart({ data }: { data: { date: string; created: number; act
                   }}
                   transition={{ duration: 0.5, ease: 'easeOut' }}
                   width={barWidth}
-                  fill="#3b82f6"
+                  fill="hsl(var(--chart-1))"
                   rx={createdHeight > 3 ? 3 : 0}
                   className="transition-all duration-300 hover:brightness-110"
                 />
@@ -163,7 +163,7 @@ function ActivityBarChart({ data }: { data: { date: string; created: number; act
                   }}
                   transition={{ duration: 0.5, ease: 'easeOut' }}
                   width={barWidth}
-                  fill="#10b981"
+                  fill="hsl(var(--chart-2))"
                   rx={activatedHeight > 3 ? 3 : 0}
                   className="transition-all duration-300 hover:brightness-110"
                 />
@@ -173,7 +173,7 @@ function ActivityBarChart({ data }: { data: { date: string; created: number; act
                     x={centerX - barWidth / 2 - 2}
                     y={createdY - 4}
                     textAnchor="middle"
-                    fill="#3b82f6"
+                    fill="hsl(var(--chart-1))"
                     className="text-[10px] font-bold"
                   >
                     {item.created}
@@ -184,7 +184,7 @@ function ActivityBarChart({ data }: { data: { date: string; created: number; act
                     x={centerX + barWidth / 2 + 2}
                     y={activatedY - 4}
                     textAnchor="middle"
-                    fill="#10b981"
+                    fill="hsl(var(--chart-2))"
                     className="text-[10px] font-bold"
                   >
                     {item.activated}

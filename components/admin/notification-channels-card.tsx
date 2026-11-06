@@ -8,10 +8,12 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Bell, Plus, Send, Edit, Trash2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 import AddChannelDialog, { ChannelItem } from '@/components/admin/add-channel-dialog';
 
 export default function NotificationChannelsCard() {
   const { toast } = useToast();
+  const [ConfirmDialog, confirm] = useConfirm();
   const [channels, setChannels] = useState<ChannelItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -41,15 +43,21 @@ export default function NotificationChannelsCard() {
   }, []);
 
   const handleToggle = async (channel: ChannelItem) => {
+    const nextState = !channel.enabled;
+    setChannels((prev) =>
+      prev.map((c) => (c.id === channel.id ? { ...c, enabled: nextState } : c))
+    );
     try {
       const res = await fetch(`/api/admin/notifications/channels/${channel.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !channel.enabled }),
+        body: JSON.stringify({ enabled: nextState }),
       });
       if (!res.ok) throw new Error('更新状态失败');
-      fetchChannels();
     } catch (err: any) {
+      setChannels((prev) =>
+        prev.map((c) => (c.id === channel.id ? { ...c, enabled: !nextState } : c))
+      );
       toast({
         title: '错误',
         description: err.message || '操作失败',
@@ -84,7 +92,13 @@ export default function NotificationChannelsCard() {
   };
 
   const handleDelete = async (channel: ChannelItem) => {
-    if (!confirm(`确定要删除告警通道 [${channel.name}] 吗？`)) return;
+    const confirmed = await confirm({
+      title: '删除告警通道',
+      description: `确定要删除告警通道 [${channel.name}] 吗？此操作不可恢复。`,
+      confirmText: '确定删除',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/admin/notifications/channels/${channel.id}`, {
@@ -180,7 +194,9 @@ export default function NotificationChannelsCard() {
                   let parsedEvents: string[] = ['all'];
                   try {
                     parsedEvents = JSON.parse(ch.events);
-                  } catch {}
+                  } catch {
+                    console.error('Invalid events JSON for channel:', ch.id);
+                  }
 
                   return (
                     <TableRow key={ch.id}>
@@ -254,6 +270,8 @@ export default function NotificationChannelsCard() {
         channelToEdit={channelToEdit}
         onSuccess={fetchChannels}
       />
+
+      <ConfirmDialog />
     </Card>
   );
 }

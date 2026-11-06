@@ -171,17 +171,22 @@ export default function LicenseDetailsDialog({
 
   const fetchGlobalSettings = async () => {
     try {
-      const res = await fetch('/api/settings/public');
+      const res = await fetch('/api/admin/settings');
       if (res.ok) {
         const data = await res.json();
-        setGlobalUnbindConfig({
-          enabled: !!data.unbindEnabled,
-          maxPerMonth: data.unbindMaxPerMonth !== undefined ? data.unbindMaxPerMonth : 0,
-          cooldownHours: data.unbindCooldownHours || 24,
-          deductHours: data.unbindDeductHours || 0,
-        });
+        if (Array.isArray(data)) {
+          const findVal = (k: string) => data.find((s: any) => s.key === k)?.value;
+          setGlobalUnbindConfig({
+            enabled: findVal('unbind_enabled') === 'true',
+            maxPerMonth: parseInt(findVal('unbind_max_per_month') || '0', 10),
+            cooldownHours: parseInt(findVal('unbind_cooldown_hours') || '24', 10),
+            deductHours: parseInt(findVal('unbind_deduct_hours') || '0', 10),
+          });
+        }
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching unbind settings:', error);
+    }
   };
 
   useEffect(() => {
@@ -608,8 +613,8 @@ export default function LicenseDetailsDialog({
                     </TabsTrigger>
                   </TabsList>
 
-                  {/* ── 标签 1：基本与时效 ── */}
-                  <TabsContent value="info" className="flex-1 overflow-y-auto space-y-4 pt-1 pr-1 animate-in fade-in-50 duration-200">
+                  <div className="h-[430px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                    <TabsContent value="info" className="space-y-4 pt-1 pr-1 outline-none mt-0">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       <div className="p-3.5 rounded-lg border bg-muted/20 space-y-2.5">
                         <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -738,8 +743,7 @@ export default function LicenseDetailsDialog({
                     </div>
                   </TabsContent>
 
-                  {/* ── 标签 2：硬件与解绑 ── */}
-                  <TabsContent value="hardware" className="space-y-4 pt-1 animate-in fade-in-50 duration-200">
+                  <TabsContent value="hardware" className="space-y-4 pt-1 outline-none mt-0">
                     <div className="p-3.5 rounded-lg border bg-muted/20 space-y-3">
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="text-xs font-semibold flex items-center gap-1.5">
@@ -890,9 +894,7 @@ export default function LicenseDetailsDialog({
                     </div>
                   </TabsContent>
 
-                  {/* ── 标签 3：会话历史 ── */}
-                  <TabsContent value="sessions" className="flex-1 flex flex-col min-h-0 space-y-2 pt-1 overflow-hidden animate-in fade-in-50 duration-200">
-                    {/* 在线会话列表 */}
+                  <TabsContent value="sessions" className="space-y-3 pt-1 outline-none mt-0">
                     <div className="flex items-center justify-between text-xs font-semibold shrink-0">
                       <span className="flex items-center gap-1.5">
                         <Activity className="h-3.5 w-3.5 text-primary" />
@@ -947,8 +949,9 @@ export default function LicenseDetailsDialog({
                       </div>
                     )}
                   </TabsContent>
-                </Tabs>
-              </div>
+                </div>
+              </Tabs>
+            </div>
 
               {/* 底部操作栏 */}
               <DialogFooter className="p-3 px-5 border-t bg-muted/20 flex items-center justify-end gap-1.5 flex-wrap">

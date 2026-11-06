@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,10 @@ import { useToast } from '@/hooks/use-toast';
 export default function ApiDocsPage() {
   const { toast } = useToast();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = '开发接口 | 管理员后台';
+  }, []);
 
   const handleCopy = (id: string, text: string) => {
     navigator.clipboard.writeText(text);

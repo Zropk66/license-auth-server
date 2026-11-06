@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Loader2, Trash2, Save, HardDrive, Calendar as CalendarIcon, Database } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/hooks/use-confirm';
 
 interface LogStats {
   verifyCount: number;
@@ -31,6 +32,7 @@ interface CleanupConfig {
 
 export default function LogCleanupCard() {
   const { toast } = useToast();
+  const [ConfirmDialog, confirm] = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -114,7 +116,13 @@ export default function LogCleanupCard() {
   };
 
   const handleCleanup = async () => {
-    if (!confirm('确定要立即执行日志清理吗？将按当前策略清除旧数据，不可恢复。')) return;
+    const confirmed = await confirm({
+      title: '执行日志清理',
+      description: '确定要立即执行日志清理吗？将按当前策略清除旧数据，不可恢复。',
+      confirmText: '立即清理',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
     setCleaning(true);
     try {
       const res = await fetch('/api/admin/maintenance/cleanup-logs', {
@@ -319,6 +327,7 @@ export default function LogCleanupCard() {
           </div>
         )}
       </CardContent>
+      <ConfirmDialog />
     </Card>
   );
 }

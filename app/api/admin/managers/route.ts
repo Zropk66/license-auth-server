@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   if (payload.role !== 'owner') {
     return NextResponse.json(
-      { error: '只有系统所有者（owner）可以管理管理员账号' },
+      { error: '只有超级管理员可以管理管理员账号' },
       { status: 403 }
     );
   }
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   if (payload.role !== 'owner') {
     return NextResponse.json(
-      { error: '只有系统所有者（owner）可以管理管理员账号' },
+      { error: '只有超级管理员可以管理管理员账号' },
       { status: 403 }
     );
   }

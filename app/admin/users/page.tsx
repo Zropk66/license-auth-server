@@ -10,7 +10,7 @@ export default function UsersPage() {
   return (
     <>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-bold">用户管理</h1>
+        <h1 className="text-2xl font-bold tracking-tight">用户管理</h1>
       </div>
 
       <UsersTable />
