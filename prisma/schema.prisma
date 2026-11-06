@@ -39,17 +39,33 @@ model User {
 }
 
 model Software {
-  id             String   @id @default(cuid())
-  name           String   @unique
+  id             String      @id @default(cuid())
+  name           String      @unique
   code           String?
   description    String?
-  enabled        Boolean  @default(true)
-  minVersionCode Int?     @default(0)
+  enabled        Boolean     @default(true)
+  minVersionCode Int?        @default(0)
   maxVersionCode Int?
   customPayload  String?
-  hookScript     String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  hookScriptId   String?
+  hookScriptRef  HookScript? @relation(fields: [hookScriptId], references: [id], onDelete: SetNull)
+  hookScript     String?     @db.Text
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([enabled])
+  @@index([hookScriptId])
+}
+
+model HookScript {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  description String?
+  script      String     @db.Text
+  enabled     Boolean    @default(true)
+  softwares   Software[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@index([enabled])
 }
