@@ -114,6 +114,9 @@ export async function PATCH(
     if (parseResult.data.customPayload !== undefined) {
       updateData.customPayload = parseResult.data.customPayload ? parseResult.data.customPayload.trim() : null;
     }
+    if (parseResult.data.hookScriptId !== undefined) {
+      updateData.hookScriptId = parseResult.data.hookScriptId ? parseResult.data.hookScriptId.trim() : null;
+    }
     if (parseResult.data.hookScript !== undefined) {
       updateData.hookScript = parseResult.data.hookScript ? parseResult.data.hookScript.trim() : null;
     }

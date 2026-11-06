@@ -19,6 +19,7 @@ import {
   Package,
   Megaphone,
   AppWindow,
+  FileCode2,
   Code2,
   KeyRound,
   User,
@@ -101,6 +102,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const navigation = [
     { name: '仪表盘', href: '/admin/dashboard', icon: LayoutDashboard },
     { name: '软件管理', href: '/admin/softwares', icon: AppWindow },
+    { name: '脚本管理', href: '/admin/scripts', icon: FileCode2 },
     { name: '授权管理', href: '/admin/licenses', icon: Key },
     { name: '用户管理', href: '/admin/users', icon: Users },
     { name: '在线会话', href: '/admin/sessions', icon: Activity },

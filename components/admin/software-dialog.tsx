@@ -8,6 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,6 +27,7 @@ export interface SoftwareItem {
   minVersionCode?: number | null;
   maxVersionCode?: number | null;
   customPayload?: string | null;
+  hookScriptId?: string | null;
   hookScript?: string | null;
   licenseCount?: number;
   versionCount?: number;
@@ -49,12 +57,23 @@ export default function SoftwareDialog({
   const [minVersionCode, setMinVersionCode] = useState<string>('0');
   const [maxVersionCode, setMaxVersionCode] = useState<string>('');
   const [customPayload, setCustomPayload] = useState('');
+  const [hookScriptId, setHookScriptId] = useState<string>('none');
   const [hookScript, setHookScript] = useState('');
+  const [availableScripts, setAvailableScripts] = useState<Array<{ id: string; name: string }>>([]);
   const [enabled, setEnabled] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+
+    fetch('/api/admin/scripts')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAvailableScripts(data.map((s: any) => ({ id: s.id, name: s.name })));
+        }
+      })
+      .catch(() => {});
 
     if (software) {
       setName(software.name || '');
@@ -63,6 +82,7 @@ export default function SoftwareDialog({
       setMinVersionCode(software.minVersionCode != null ? String(software.minVersionCode) : '0');
       setMaxVersionCode(software.maxVersionCode != null ? String(software.maxVersionCode) : '');
       setCustomPayload(software.customPayload || '');
+      setHookScriptId(software.hookScriptId || 'none');
       setHookScript(software.hookScript || '');
       setEnabled(software.enabled ?? true);
     } else {
@@ -72,6 +92,7 @@ export default function SoftwareDialog({
       setMinVersionCode('0');
       setMaxVersionCode('');
       setCustomPayload('');
+      setHookScriptId('none');
       setHookScript('');
       setEnabled(true);
     }
@@ -100,6 +121,7 @@ export default function SoftwareDialog({
         minVersionCode: isNaN(parsedMin) ? 0 : parsedMin,
         maxVersionCode: parsedMax !== null && !isNaN(parsedMax) ? parsedMax : null,
         customPayload: customPayload.trim() || null,
+        hookScriptId: hookScriptId === 'none' ? null : (hookScriptId || null),
         hookScript: hookScript.trim() || null,
         enabled,
       };
@@ -215,6 +237,32 @@ export default function SoftwareDialog({
                       />
                       <p className="text-[10px] text-muted-foreground">高于此版本提示已过期</p>
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">绑定动态脚本（可选）</Label>
+                    <Select
+                      value={hookScriptId}
+                      onValueChange={setHookScriptId}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="选择关联的动态钩子脚本" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none" className="text-xs">
+                          不绑定脚本（无）
+                        </SelectItem>
+                        {availableScripts.map((s) => (
+                          <SelectItem key={s.id} value={s.id} className="text-xs">
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground">
+                      授权验证封签前执行该脚本，可动态改写载荷或前置拦截
+                    </p>
                   </div>
 
                   <div className="space-y-1.5">
