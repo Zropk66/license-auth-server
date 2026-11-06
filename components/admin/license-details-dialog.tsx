@@ -613,7 +613,7 @@ export default function LicenseDetailsDialog({
                     </TabsTrigger>
                   </TabsList>
 
-                  <div className="h-[430px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  <div className="h-[430px] overflow-y-auto px-1.5 [scrollbar-gutter:stable]">
                     <TabsContent value="info" className="space-y-4 pt-1 pr-1 outline-none mt-0">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                       <div className="p-3.5 rounded-lg border bg-muted/20 space-y-2.5">

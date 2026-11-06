@@ -258,7 +258,7 @@ export default function BatchGenerateDialog({
                   <TabsTrigger value="policy" className="text-xs font-medium">时长模式与专属载荷</TabsTrigger>
                 </TabsList>
 
-                <div className="h-[360px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                <div className="h-[360px] overflow-y-auto px-1.5 [scrollbar-gutter:stable]">
                   <TabsContent value="basic" className="space-y-4 mt-0 focus-visible:outline-none">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">

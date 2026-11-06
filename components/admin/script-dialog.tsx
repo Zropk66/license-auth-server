@@ -185,7 +185,7 @@ export default function ScriptDialog({
                 <TabsTrigger value="bindings" className="text-xs font-medium">关联软件与属性</TabsTrigger>
               </TabsList>
 
-              <div className="h-[360px] overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+              <div className="h-[360px] overflow-y-auto px-1.5 [scrollbar-gutter:stable]">
                 <TabsContent value="editor" className="space-y-3 mt-0 focus-visible:outline-none flex flex-col h-full">
                   <div className="grid grid-cols-2 gap-3 shrink-0">
                     <div className="space-y-1.5">

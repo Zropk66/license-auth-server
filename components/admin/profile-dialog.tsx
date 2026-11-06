@@ -400,7 +400,7 @@ export default function ProfileDialog({
                 暂无近期操作日志
               </div>
             ) : (
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[300px] overflow-y-auto px-1.5">
                 {logs.map((log) => {
                   const actionName = ACTION_NAME_MAP[log.action] || log.action;
                   return (

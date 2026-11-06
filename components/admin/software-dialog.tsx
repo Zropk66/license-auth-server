@@ -180,7 +180,7 @@ export default function SoftwareDialog({
                 <TabsTrigger value="advanced" className="text-xs font-medium">扩展载荷</TabsTrigger>
               </TabsList>
 
-              <div className="overflow-y-auto pr-1 max-h-[65vh] [scrollbar-gutter:stable]">
+              <div className="overflow-y-auto px-1.5 max-h-[65vh] [scrollbar-gutter:stable]">
                 <TabsContent value="basic" className="space-y-3 mt-0 focus-visible:outline-none">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
