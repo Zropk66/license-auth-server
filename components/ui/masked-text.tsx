@@ -52,19 +52,23 @@ export function MaskedText({
 
   const copyToClipboard = useCallback(async () => {
     if (!value || value === '无' || value === '-') return;
+    /* execCommand 兜底：headless 或未授权环境下 clipboard API 会 NotAllowedError */
+    const execCopy = () => {
+      const textArea = document.createElement('textarea');
+      textArea.value = value;
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    };
     try {
-      if (navigator?.clipboard?.writeText) {
+      try {
         await navigator.clipboard.writeText(value);
-      } else {
-        const textArea = document.createElement('textarea');
-        textArea.value = value;
-        textArea.style.position = 'fixed';
-        textArea.style.opacity = '0';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
+      } catch {
+        execCopy();
       }
 
       setCopied(true);
@@ -195,10 +199,11 @@ export function MaskedText({
 
   const handleMove = useCallback(
     (clientX: number, clientY: number) => {
+      /* 长按中允许 14px 内的手部抖动，超限视为滑动取消 */
       if (!startPosRef.current) return;
       const dx = Math.abs(clientX - startPosRef.current.x);
       const dy = Math.abs(clientY - startPosRef.current.y);
-      if (dx > 10 || dy > 10) {
+      if (dx > 14 || dy > 14) {
         handleEnd();
       }
     },
@@ -219,7 +224,7 @@ export function MaskedText({
   }
 
   return (
-    <Tooltip>
+    <Tooltip delayDuration={800}>
       <TooltipTrigger asChild>
         <span
           ref={rootRef}
