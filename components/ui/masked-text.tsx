@@ -115,7 +115,7 @@ export function MaskedText({
               `circle(0px at ${localX}px ${localY}px)`,
               `circle(${endRadius}px at ${localX}px ${localY}px)`,
             ],
-            backgroundColor: ['hsl(var(--primary) / 0.15)', 'hsl(var(--primary) / 0.15)'],
+            backgroundColor: ['color-mix(in srgb, hsl(var(--primary)) 22%, transparent)', 'hsl(var(--primary))'],
           },
           {
             duration: 500,
@@ -164,7 +164,10 @@ export function MaskedText({
               `circle(${currentRadius}px at ${expand.x}px ${expand.y}px)`,
               `circle(0px at ${expand.x}px ${expand.y}px)`,
             ],
-            backgroundColor: ['hsl(var(--primary) / 0.15)', 'hsl(var(--primary) / 0)'],
+            backgroundColor: [
+              `color-mix(in srgb, hsl(var(--primary)) ${22 - Math.round(progress * 22)}%, transparent)`,
+              'hsl(var(--primary) / 0)',
+            ],
           },
           {
             duration: Math.max(80, (currentRadius / expand.radius) * 250),
