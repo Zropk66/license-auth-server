@@ -228,3 +228,11 @@ export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+export const hookScriptSchema = z.object({
+  name: z.string().trim().min(1, '请输入脚本名称').max(100, '脚本名称不能超过100个字符'),
+  description: z.string().trim().max(500, '描述不能超过500个字符').nullish(),
+  script: z.string().min(1, '请输入脚本代码').max(65536, '脚本大小不能超过64KB'),
+  enabled: z.boolean().default(true),
+  softwareIds: z.array(z.string()).optional(),
+});
