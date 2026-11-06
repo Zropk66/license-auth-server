@@ -97,3 +97,71 @@ test('executeHookScript falls back gracefully on syntax error', async () => {
   assert.equal(result.rejected, false);
   assert.equal(result.finalPayloadString, 'raw-fallback');
 });
+
+test('executeHookScript prevents host prototype chain RCE escape', async () => {
+  const script = `
+    try {
+      const p = ({}).constructor.constructor('return process')();
+      payload.escaped = typeof p;
+    } catch (e) {
+      payload.error = String(e);
+    }
+  `;
+  const result = await executeHookScript({
+    script,
+    req: {
+      protocol: 'verify',
+      softwareName: 'PhotoTool',
+    },
+    payloadString: JSON.stringify({}),
+  });
+
+  assert.equal(result.success, true);
+  const parsed = JSON.parse(result.finalPayloadString);
+  assert.equal(parsed.escaped, undefined);
+  assert.match(parsed.error, /process.*not defined/);
+});
+
+test('executeHookScript terminates microtask loops without freezing host', async () => {
+  const script = `
+    Promise.resolve().then(() => {
+      while (true) {}
+    });
+  `;
+  const result = await executeHookScript({
+    script,
+    req: {
+      protocol: 'verify',
+      softwareName: 'PhotoTool',
+    },
+    payloadString: JSON.stringify({ initial: 1 }),
+    timeoutMs: 30,
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.rejected, false);
+  assert.equal(result.finalPayloadString, JSON.stringify({ initial: 1 }));
+});
+
+test('executeHookScript gracefully terminates heap exhaustion attempts', async () => {
+  const script = `
+    const arr = [];
+    while (true) {
+      arr.push('x'.repeat(10000));
+    }
+  `;
+  const result = await executeHookScript({
+    script,
+    req: {
+      protocol: 'verify',
+      softwareName: 'PhotoTool',
+    },
+    payloadString: JSON.stringify({ safe: true }),
+    timeoutMs: 50,
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.rejected, false);
+  assert.equal(result.finalPayloadString, JSON.stringify({ safe: true }));
+});
+

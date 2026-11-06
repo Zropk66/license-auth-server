@@ -67,16 +67,6 @@ export async function PATCH(
       return NextResponse.json({ error: '目标软件不存在' }, { status: 404 });
     }
 
-    // node:vm is not a security boundary, so authoring hook code equals server code execution
-    const { hookScript } = parseResult.data;
-    if (
-      hookScript !== undefined &&
-      (hookScript?.trim() || null) !== existing.hookScript &&
-      authResult.payload.role !== 'owner'
-    ) {
-      return NextResponse.json({ error: '只有超级管理员可以修改钩子脚本' }, { status: 403 });
-    }
-
     const updateData: any = {};
     if (parseResult.data.name !== undefined) {
       const newName = parseResult.data.name.trim();
