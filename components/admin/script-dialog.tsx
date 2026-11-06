@@ -215,7 +215,7 @@ export default function ScriptDialog({
                     <div className="flex items-center justify-between">
                       <Label className="text-xs font-medium flex items-center gap-1.5">
                         <span>JavaScript 代码</span>
-                        <Badge variant="outline" className="text-[10px] font-mono py-0 h-4">Node.js vm (50ms)</Badge>
+                        <Badge variant="outline" className="text-[10px] font-mono py-0 h-4">WASM QuickJS (50ms, 8MB)</Badge>
                       </Label>
                       <span className="text-[10px] text-muted-foreground font-mono">
                         req | payload | reject(reason)

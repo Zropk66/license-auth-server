@@ -225,8 +225,8 @@ export default function ApiDocsPage() {
             <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
               <span className="font-semibold text-foreground block">沙箱执行环境与时机</span>
               <p className="text-muted-foreground">
-                脚本在 Node.js vm 轻量安全隔离区运行，触发时机位于卡密有效期及版本校验通过后、Ed25519 签名封签之前。
-                沙箱施加 50 毫秒执行超时上限，无网络或系统文件访问权限。
+                脚本在 WebAssembly QuickJS 隔离沙箱中运行，触发时机位于卡密有效期及版本校验通过后、Ed25519 签名封签之前。
+                沙箱施加 50 毫秒执行超时上限与 8MB 内存上限，无操作系统调用、文件系统或网络访问权限。
               </p>
             </div>
 
