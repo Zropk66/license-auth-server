@@ -196,16 +196,26 @@ export function MaskedText({
           onTouchEnd={handleEnd}
           onTouchCancel={handleEnd}
         >
-          {/* 长按扩散层：以按下点为圆心扩散至覆盖全组件，扩散完成即复制 */}
-          {ripple && (
-            <motion.span
-              className="absolute rounded-full bg-primary/15 pointer-events-none"
-              style={{ left: ripple.x, top: ripple.y, width: ripple.size, height: ripple.size }}
-              initial={{ scale: 0, opacity: 0.9, x: '-50%', y: '-50%' }}
-              animate={{ scale: 1, opacity: 0 }}
-              transition={{ duration: 0.5, ease: 'easeOut' }}
-            />
-          )}
+          {/* 长按扩散层：以按下点为圆心扩散至覆盖全组件，扩散完成即复制；松开未完成则原路收回 */}
+          <AnimatePresence>
+            {ripple && (
+              <motion.span
+                className="absolute rounded-full bg-primary/15 pointer-events-none"
+                style={{
+                  left: ripple.x,
+                  top: ripple.y,
+                  width: ripple.size,
+                  height: ripple.size,
+                  marginLeft: -ripple.size / 2,
+                  marginTop: -ripple.size / 2,
+                }}
+                initial={{ scale: 0, opacity: 0.6 }}
+                animate={{ scale: 1, opacity: 0.25 }}
+                exit={{ scale: 0, opacity: 0, transition: { duration: 0.25, ease: 'easeIn' } }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+              />
+            )}
+          </AnimatePresence>
           <span className="truncate">{revealed ? value : maskValue(value, head, tail)}</span>
           <AnimatePresence>
             {copied && (
