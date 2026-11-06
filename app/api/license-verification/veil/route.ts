@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { executeHookScript } from '@/lib/server/hook-runner';
 import { getOrCreateKeyPair, signPayload } from '@/lib/crypto-sign';
 import { sealEnvelope, openEnvelope, MAX_EVIDENCE } from '@/lib/veil-envelope';
 import {
@@ -375,6 +376,7 @@ export async function POST(req: NextRequest) {
 
     const boundSoftware = await prisma.software.findUnique({
       where: { name: softwareName },
+      include: { hookScriptRef: true },
     });
     if (boundSoftware) {
       const versionCheck = checkSoftwareVersionAllowed(versionCode, boundSoftware);
@@ -608,12 +610,57 @@ export async function POST(req: NextRequest) {
       activeLicense.customPayload
     );
 
+    let finalPayloadString = effectiveCustomPayload;
+
+    const effectiveHookScript =
+      boundSoftware?.hookScriptRef?.enabled && boundSoftware.hookScriptRef.script
+        ? boundSoftware.hookScriptRef.script
+        : (boundSoftware as any)?.hookScript;
+
+    if (effectiveHookScript) {
+      const hookResult = await executeHookScript({
+        script: effectiveHookScript,
+        req: {
+          protocol: 'veil',
+          licenseKey,
+          hwid,
+          deviceName,
+          nonce,
+          timestamp,
+          softwareName,
+          version,
+          versionCode,
+          ipAddress,
+          evidence,
+          evidenceLayout,
+        },
+        payloadString: effectiveCustomPayload,
+      });
+
+      if (hookResult.rejected) {
+        await logVerificationAttempt({
+          ipAddress,
+          licenseKey,
+          softwareName,
+          hwid,
+          deviceName,
+          success: false,
+          reason: 'hook_rejected',
+        });
+        return fail('HOOK_REJECTED', hookResult.rejectReason || '验证已被自定义规则拦截。');
+      }
+
+      if (hookResult.finalPayloadString !== null) {
+        finalPayloadString = hookResult.finalPayloadString;
+      }
+    }
+
     // 授权状态并入载荷，处于签名与加密覆盖范围内，客户端不必再信任明文 status
     const statusFlags = encodeStatusFlags(
       activeLicense.status,
       activeLicense.hardwareBindingEnabled
     );
-    const payloadWithFlags = attachStatusFlags(effectiveCustomPayload, statusFlags);
+    const payloadWithFlags = attachStatusFlags(finalPayloadString, statusFlags);
 
     const payload = composeLicensePayload({
       issuedAt: Date.now(),

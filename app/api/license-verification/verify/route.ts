@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import vm from 'node:vm';
+import { executeHookScript } from '@/lib/server/hook-runner';
 import { signPayload, getOrCreateKeyPair } from '@/lib/crypto-sign';
 import { sealPayload, composeLicensePayload, mergeCustomPayloads, encodeStatusFlags, attachStatusFlags } from '@/lib/payload-seal';
 import prisma from '@/lib/prisma';
@@ -247,6 +247,7 @@ export async function POST(req: NextRequest) {
 
     const boundSoftware = await prisma.software.findUnique({
       where: { name: softwareName },
+      include: { hookScriptRef: true },
     });
     if (boundSoftware) {
       const versionCheck = checkSoftwareVersionAllowed(versionCode, boundSoftware);
@@ -564,54 +565,48 @@ export async function POST(req: NextRequest) {
 
     let finalPayloadString = effectiveCustomPayload;
 
-    // 如果所属软件配置了自定义动态 JS 钩子脚本，在轻量沙箱中执行
-    const hookScript = (boundSoftware as any)?.hookScript;
-    if (hookScript && typeof hookScript === 'string' && hookScript.trim()) {
-      try {
-        let payloadObj: Record<string, unknown> = {};
-        if (effectiveCustomPayload) {
-          try {
-            const parsed = JSON.parse(effectiveCustomPayload);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              payloadObj = parsed as Record<string, unknown>;
-            } else {
-              payloadObj = { value: parsed };
-            }
-          } catch {
-            payloadObj = { raw: effectiveCustomPayload };
-          }
-        }
+    const effectiveHookScript =
+      boundSoftware?.hookScriptRef?.enabled && boundSoftware.hookScriptRef.script
+        ? boundSoftware.hookScriptRef.script
+        : (boundSoftware as any)?.hookScript;
 
-        const sandbox = {
-          req: {
-            ...body,
-            licenseKey,
-            hwid,
-            deviceName,
-            nonce,
-            timestamp,
-            softwareName,
-            version,
-            versionCode,
-            ipAddress,
-          },
-          payload: payloadObj,
-          BigInt,
-          console: {
-            log: (...args: any[]) => console.log(`[HookScript:${softwareName}]`, ...args),
-            warn: (...args: any[]) => console.warn(`[HookScript:${softwareName}]`, ...args),
-            error: (...args: any[]) => console.error(`[HookScript:${softwareName}]`, ...args),
-          },
-        };
+    if (effectiveHookScript) {
+      const hookResult = await executeHookScript({
+        script: effectiveHookScript,
+        req: {
+          protocol: 'verify',
+          ...body,
+          licenseKey,
+          hwid,
+          deviceName,
+          nonce,
+          timestamp,
+          softwareName,
+          version,
+          versionCode,
+          ipAddress,
+        },
+        payloadString: effectiveCustomPayload,
+      });
 
-        const context = vm.createContext(sandbox);
-        vm.runInContext(hookScript, context, { timeout: 50 });
+      if (hookResult.rejected) {
+        await logVerificationAttempt({
+          ipAddress,
+          licenseKey,
+          softwareName,
+          hwid,
+          deviceName,
+          success: false,
+          reason: 'hook_rejected',
+        });
+        return enc({
+          error: 'Verification rejected by hook script',
+          message: hookResult.rejectReason || '验证已被自定义规则拦截。',
+        });
+      }
 
-        if (sandbox.payload && typeof sandbox.payload === 'object') {
-          finalPayloadString = JSON.stringify(sandbox.payload);
-        }
-      } catch (scriptErr: any) {
-        console.error(`[HookScript:${softwareName}] 执行错误:`, scriptErr?.message || scriptErr);
+      if (hookResult.finalPayloadString !== null) {
+        finalPayloadString = hookResult.finalPayloadString;
       }
     }
 
