@@ -132,6 +132,9 @@ export default function VerificationDetailsDialog({
   const router = useRouter();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+  /* 快捷拉黑复用 AddBlacklistDialog：预填类型与目标，管理员可在面板内调整时长与原因 */
+  const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false);
+  const [quickBlacklistPreset, setQuickBlacklistPreset] = useState<BlacklistEntry | null>(null);
 
   if (!log) return null;
 
@@ -200,10 +203,6 @@ export default function VerificationDetailsDialog({
       setIsNavigating(false);
     }
   };
-
-  /* 快捷拉黑复用 AddBlacklistDialog：预填类型与目标，管理员可在面板内调整时长与原因 */
-  const [blacklistDialogOpen, setBlacklistDialogOpen] = useState(false);
-  const [quickBlacklistPreset, setQuickBlacklistPreset] = useState<BlacklistEntry | null>(null);
 
   const openQuickBlacklist = (type: 'ip' | 'hwid', value: string) => {
     setQuickBlacklistPreset({

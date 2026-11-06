@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ShieldAlert, Plus, Trash2, Search, RefreshCw, Globe, Laptop, Loader2, Edit } from 'lucide-react';
+import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/hooks/use-confirm';
 import AddBlacklistDialog, { BlacklistEntry } from '@/components/admin/add-blacklist-dialog';
@@ -224,12 +225,9 @@ export default function BlacklistPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <code
-                            className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded block max-w-[220px] truncate"
-                            title={item.value}
-                          >
-                            {item.value}
-                          </code>
+                          <div className="flex items-center gap-1 min-w-0">
+                            <MaskedText value={item.value} head={6} tail={4} />
+                          </div>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground max-w-xs truncate" title={item.reason || ''}>
                           {item.reason || '-'}

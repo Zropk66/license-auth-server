@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Copy } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -171,13 +171,32 @@ export default function AddBlacklistDialog({
 
             <div className="grid gap-2">
               <Label>{type === 'ip' ? 'IP 地址 / 网段' : 'HWID 特征码'}</Label>
-              <Input
-                placeholder={type === 'ip' ? '例如 1.2.3.4 或 1.2.3.0/24 或 1.2.*.*' : '例如 HW-A1B2C3D4'}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                disabled={isSubmitting || isEdit}
-                required
-              />
+              <div className="flex items-center gap-1.5">
+                <Input
+                  placeholder={type === 'ip' ? '例如 1.2.3.4 或 1.2.3.0/24 或 1.2.*.*' : '例如 HW-A1B2C3D4'}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  disabled={isSubmitting || isEdit}
+                  required
+                  className="font-mono text-xs"
+                />
+                {isEdit && value && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => {
+                      navigator.clipboard.writeText(value);
+                      toast({ title: '已复制到剪贴板', description: value.length > 28 ? `${value.slice(0, 16)}...${value.slice(-8)}` : value });
+                    }}
+                    title="复制完整封禁目标"
+                  >
+                    <Copy className="h-4 w-4" />
+                    <span className="sr-only">复制</span>
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-2">
