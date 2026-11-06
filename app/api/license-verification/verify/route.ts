@@ -565,10 +565,12 @@ export async function POST(req: NextRequest) {
 
     let finalPayloadString = effectiveCustomPayload;
 
-    const effectiveHookScript =
-      boundSoftware?.hookScriptRef?.enabled && boundSoftware.hookScriptRef.script
+    // A bound but disabled script must disable hooks, not resurrect the legacy column
+    const effectiveHookScript = boundSoftware?.hookScriptRef
+      ? boundSoftware.hookScriptRef.enabled
         ? boundSoftware.hookScriptRef.script
-        : (boundSoftware as any)?.hookScript;
+        : null
+      : boundSoftware?.hookScript;
 
     if (effectiveHookScript) {
       const hookResult = await executeHookScript({
