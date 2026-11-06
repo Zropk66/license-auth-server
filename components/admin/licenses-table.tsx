@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Plus, Search, RefreshCcw, Copy, Key, Download, Layers } from 'lucide-react';
 import { formatDate, formatLicenseRemaining } from '@/lib/utils';
-import { getLicenseStatus, formatDuration } from '@/lib/license-status';
+import { formatDuration } from '@/lib/license-status';
 import { MaskedText } from '@/components/ui/masked-text';
 import { useToast } from '@/hooks/use-toast';
 import CreateLicenseDialog from './create-license-dialog';
@@ -333,11 +333,9 @@ export default function LicensesTable() {
                     />
                   </TableHead>
                   <TableHead>授权密钥</TableHead>
-                  <TableHead>所属软件</TableHead>
+                  <TableHead>软件 / 类型</TableHead>
                   <TableHead>用户名</TableHead>
                   <TableHead>到期时效</TableHead>
-                  <TableHead>卡密类型</TableHead>
-                  <TableHead>状态</TableHead>
                   <TableHead>HWID 绑定</TableHead>
                   <TableHead>备注</TableHead>
                   <TableHead className="w-[80px] text-right">操作</TableHead>
@@ -346,21 +344,20 @@ export default function LicensesTable() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center h-24">
+                    <TableCell colSpan={8} className="text-center h-24">
                       <Loader2 className="h-5 w-5 animate-spin mx-auto" />
                       <p className="text-sm text-muted-foreground mt-2">正在加载授权...</p>
                     </TableCell>
                   </TableRow>
                 ) : filteredLicenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center h-24">
+                    <TableCell colSpan={8} className="text-center h-24">
                       <Key className="h-8 w-8 mx-auto text-muted-foreground" />
                       <p className="text-muted-foreground mt-2">未找到授权密钥</p>
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredLicenses.map((license) => {
-                    const status = getLicenseStatus(license);
                     const isSelected = selectedIds.includes(license.id);
                     const remainingInfo = formatLicenseRemaining(
                       license.expirationDate,
@@ -370,7 +367,7 @@ export default function LicensesTable() {
                     );
 
                     return (
-                      <TableRow key={license.id} className={isSelected ? "bg-muted/50" : ""}>
+                      <TableRow key={license.id} className={isSelected ? "bg-muted/50 group/row" : "group/row"}>
                         <TableCell className="px-4">
                           <input
                             type="checkbox"
@@ -380,49 +377,29 @@ export default function LicensesTable() {
                           />
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs sm:text-sm font-mono inline-flex items-center">
-                              <MaskedText value={license.licenseKey} head={6} tail={4} />
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0"
-                              onClick={() => copyToClipboard(license.licenseKey)}
-                            >
-                              <Copy className="h-3 w-3" />
-                              <span className="sr-only">复制密钥</span>
-                            </Button>
-                          </div>
+                          <MaskedText value={license.licenseKey} head={6} tail={4} />
                         </TableCell>
                         <TableCell>
-                          {license.softwareName === 'ALL' || license.softwareName === '*' ? (
-                            <Badge variant="outline" className="font-semibold text-purple-600 border-purple-300 bg-purple-500/10">
-                              全部软件 (通用)
-                            </Badge>
-                          ) : (
-                            license.softwareName
-                          )}
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs">
+                              {license.softwareName === 'ALL' || license.softwareName === '*'
+                                ? <span className="font-mono font-semibold text-purple-600 dark:text-purple-400">ALL</span>
+                                : license.softwareName}
+                            </span>
+                            {license.licenseType === 'duration' ? (
+                              <span className="text-[10px] text-muted-foreground border border-border rounded px-1 py-px">
+                                激活卡
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground border border-border rounded px-1 py-px">
+                                即时卡
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>{license.username}</TableCell>
                         <TableCell className="text-xs" title={remainingInfo.detailText}>
                           <span className={remainingInfo.colorClass}>{remainingInfo.text}</span>
-                        </TableCell>
-                        <TableCell>
-                          {license.licenseType === 'duration' ? (
-                            <Badge variant="outline" className="text-yellow-600 border-yellow-600 bg-yellow-500/5">
-                              激活卡
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-blue-600 border-blue-600 bg-blue-500/5">
-                              即时卡
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={status.variant} className={status.className}>
-                            {status.label}
-                          </Badge>
                         </TableCell>
                         <TableCell>
                           <Badge

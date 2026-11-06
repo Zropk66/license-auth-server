@@ -32,8 +32,11 @@ export function MaskedText({
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isPressing, setIsPressing] = useState(false);
+  /* 长按扩散动画：从按下坐标向外扩散，覆盖全组件后复制完成 */
+  const [ripple, setRipple] = useState<{ x: number; y: number; size: number } | null>(null);
   const { toast } = useToast();
 
+  const rootRef = useRef<HTMLSpanElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressRef = useRef(false);
   const startPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -94,6 +97,17 @@ export function MaskedText({
       setIsPressing(true);
       startPosRef.current = { x: clientX, y: clientY };
 
+      /* 计算以按下点为圆心、能覆盖整个组件的扩散圆直径 */
+      if (rootRef.current) {
+        const rect = rootRef.current.getBoundingClientRect();
+        const localX = clientX - rect.left;
+        const localY = clientY - rect.top;
+        const farX = Math.max(localX, rect.width - localX);
+        const farY = Math.max(localY, rect.height - localY);
+        const size = Math.sqrt(farX * farX + farY * farY) * 2;
+        setRipple({ x: localX, y: localY, size });
+      }
+
       if (timerRef.current) {
         clearTimeout(timerRef.current);
       }
@@ -102,7 +116,7 @@ export function MaskedText({
         isLongPressRef.current = true;
         setIsPressing(false);
         copyToClipboard();
-      }, 450);
+      }, 500);
     },
     [copyable, value, copyToClipboard]
   );
@@ -114,6 +128,7 @@ export function MaskedText({
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    setRipple(null);
     if (isLongPressRef.current) {
       setTimeout(() => {
         isLongPressRef.current = false;
@@ -150,10 +165,11 @@ export function MaskedText({
     <Tooltip>
       <TooltipTrigger asChild>
         <span
+          ref={rootRef}
           role="button"
           tabIndex={0}
           style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
-          className={`flex items-center cursor-pointer select-none transition-all duration-150 px-1 py-0.5 rounded max-w-full overflow-hidden ${
+          className={`relative flex items-center cursor-pointer select-none transition-all duration-150 px-1 py-0.5 rounded max-w-full overflow-hidden ${
             copied
               ? 'text-green-600 bg-green-500/10 font-semibold dark:text-green-400 dark:bg-green-500/20'
               : isPressing
@@ -176,12 +192,20 @@ export function MaskedText({
           onTouchStart={(e) => {
             if (e.touches[0]) handleStart(e.touches[0].clientX, e.touches[0].clientY);
           }}
-          onTouchMove={(e) => {
-            if (e.touches[0]) handleMove(e.touches[0].clientX, e.touches[0].clientY);
-          }}
+          onTouchMove={(e) => handleMove(e.touches[0].clientX, e.touches[0].clientY)}
           onTouchEnd={handleEnd}
           onTouchCancel={handleEnd}
         >
+          {/* 长按扩散层：以按下点为圆心扩散至覆盖全组件，扩散完成即复制 */}
+          {ripple && (
+            <motion.span
+              className="absolute rounded-full bg-primary/15 pointer-events-none"
+              style={{ left: ripple.x, top: ripple.y, width: ripple.size, height: ripple.size }}
+              initial={{ scale: 0, opacity: 0.9, x: '-50%', y: '-50%' }}
+              animate={{ scale: 1, opacity: 0 }}
+              transition={{ duration: 0.5, ease: 'easeOut' }}
+            />
+          )}
           <span className="truncate">{revealed ? value : maskValue(value, head, tail)}</span>
           <AnimatePresence>
             {copied && (
