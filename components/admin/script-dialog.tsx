@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Loader2, Code2, ShieldAlert, Sparkles } from 'lucide-react';
+import { Loader2, Code2, ShieldAlert, Sparkles, Layers } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export interface HookScriptItem {
@@ -99,6 +99,14 @@ export default function ScriptDialog({
     setSelectedSoftwareIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
+  };
+
+  const handleSelectAllSoftwares = () => {
+    setSelectedSoftwareIds(availableSoftwares.map((sw) => sw.id));
+  };
+
+  const handleClearSoftwares = () => {
+    setSelectedSoftwareIds([]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -186,7 +194,7 @@ export default function ScriptDialog({
               </TabsList>
 
               <div className="h-[360px] overflow-y-auto px-1.5 [scrollbar-gutter:stable]">
-                <TabsContent value="editor" className="space-y-3 mt-0 focus-visible:outline-none flex flex-col h-full">
+                <TabsContent value="editor" className="space-y-3 mt-0 focus-visible:outline-none data-[state=active]:flex data-[state=inactive]:hidden flex-col h-full">
                   <div className="grid grid-cols-2 gap-3 shrink-0">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-medium">脚本名称 <span className="text-destructive">*</span></Label>
@@ -232,48 +240,155 @@ export default function ScriptDialog({
                   </div>
                 </TabsContent>
 
-                <TabsContent value="bindings" className="space-y-4 mt-0 focus-visible:outline-none">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs font-medium">应用至以下软件</Label>
-                      <span className="text-[10px] text-muted-foreground">已选择 {selectedSoftwareIds.length} 个软件</span>
-                    </div>
-                    <div className="border rounded-md p-3 max-h-[220px] overflow-y-auto space-y-2 bg-muted/10">
-                      {availableSoftwares.length === 0 ? (
-                        <p className="text-xs text-muted-foreground py-4 text-center">暂无可用的软件</p>
-                      ) : (
-                        availableSoftwares.map((sw) => {
-                          const checked = selectedSoftwareIds.includes(sw.id);
-                          return (
-                            <label
-                              key={sw.id}
-                              className="flex items-center space-x-2.5 p-1.5 rounded hover:bg-muted/40 cursor-pointer text-xs"
-                            >
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() => toggleSoftware(sw.id)}
-                                disabled={isSubmitting}
-                              />
-                              <span className="font-medium text-foreground">{sw.name}</span>
-                            </label>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
+                <TabsContent value="bindings" className="mt-0 focus-visible:outline-none data-[state=active]:block data-[state=inactive]:hidden h-full">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 h-full">
+                    {/* 左侧：关联软件 */}
+                    <div className="flex flex-col h-full min-h-0 space-y-2">
+                      <div className="flex items-center justify-between shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <Layers className="h-3.5 w-3.5 text-primary" />
+                          <Label className="text-xs font-medium">应用至以下软件</Label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {availableSoftwares.length > 0 && (
+                            <div className="flex items-center gap-1 text-[11px]">
+                              <button
+                                type="button"
+                                onClick={handleSelectAllSoftwares}
+                                disabled={isSubmitting || selectedSoftwareIds.length === availableSoftwares.length}
+                                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                全选
+                              </button>
+                              <span className="text-muted-foreground/40">|</span>
+                              <button
+                                type="button"
+                                onClick={handleClearSoftwares}
+                                disabled={isSubmitting || selectedSoftwareIds.length === 0}
+                                className="text-muted-foreground hover:text-foreground hover:underline disabled:text-muted-foreground/40 disabled:no-underline cursor-pointer disabled:cursor-not-allowed"
+                              >
+                                清空
+                              </button>
+                            </div>
+                          )}
+                          <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4 tabular-nums">
+                            已选 {selectedSoftwareIds.length}/{availableSoftwares.length}
+                          </Badge>
+                        </div>
+                      </div>
 
-                  <div className="flex items-center justify-between rounded-lg border p-2.5 bg-muted/20">
-                    <div className="space-y-0.5">
-                      <Label className="text-xs font-medium">启用此脚本</Label>
-                      <p className="text-[10px] text-muted-foreground">
-                        禁用后，关联该脚本的所有软件在验证时将跳过此钩子
+                      <div className="flex-1 min-h-0 border rounded-md p-2 overflow-y-auto space-y-1.5 bg-muted/10 [scrollbar-gutter:stable]">
+                        {availableSoftwares.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center py-6 px-4">
+                            <Layers className="h-6 w-6 text-muted-foreground/40 mb-1.5" />
+                            <p className="text-xs text-muted-foreground">暂无可用的软件</p>
+                            <p className="text-[10px] text-muted-foreground/70 mt-0.5">请先在软件管理中创建软件</p>
+                          </div>
+                        ) : (
+                          availableSoftwares.map((sw) => {
+                            const checked = selectedSoftwareIds.includes(sw.id);
+                            return (
+                              <label
+                                key={sw.id}
+                                className={`flex items-center space-x-2.5 p-2 rounded-md border text-xs cursor-pointer transition-colors ${
+                                  checked
+                                    ? 'border-primary/30 bg-primary/5 text-foreground'
+                                    : 'border-border/40 hover:bg-muted/40 hover:border-border/80 text-muted-foreground'
+                                }`}
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={() => toggleSoftware(sw.id)}
+                                  disabled={isSubmitting}
+                                />
+                                <span className="font-medium flex-1 truncate text-foreground">{sw.name}</span>
+                                {checked && (
+                                  <span className="text-[10px] font-mono text-primary/80 shrink-0">已绑定</span>
+                                )}
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+
+                      <p className="text-[10px] text-muted-foreground shrink-0 leading-tight">
+                        仅勾选的软件在进行授权验证时会触发此动态脚本。
                       </p>
                     </div>
-                    <Switch
-                      checked={enabled}
-                      onCheckedChange={setEnabled}
-                      disabled={isSubmitting}
-                    />
+
+                    {/* 右侧：脚本属性与沙箱约束 */}
+                    <div className="flex flex-col h-full min-h-0 space-y-2.5 justify-between">
+                      {/* 运行状态卡片 */}
+                      <div className="rounded-lg border p-2.5 bg-muted/20 flex items-center justify-between shrink-0">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <Label className="text-xs font-medium">启用此脚本</Label>
+                            <Badge
+                              variant={enabled ? 'default' : 'outline'}
+                              className="text-[10px] py-0 px-1.5 h-4"
+                            >
+                              {enabled ? '运行中' : '已暂停'}
+                            </Badge>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            禁用后关联软件在验证时将跳过此钩子
+                          </p>
+                        </div>
+                        <Switch
+                          checked={enabled}
+                          onCheckedChange={setEnabled}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+
+                      {/* WASM 沙箱运行属性 */}
+                      <div className="rounded-lg border border-border/60 bg-muted/10 p-3 space-y-2 flex-1 flex flex-col justify-between">
+                        <div className="flex items-center justify-between shrink-0">
+                          <div className="flex items-center gap-1.5">
+                            <ShieldAlert className="h-3.5 w-3.5 text-primary" />
+                            <span className="text-xs font-medium">沙箱执行属性</span>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 h-4 font-normal text-muted-foreground border-border/80">
+                              内核只读
+                            </Badge>
+                          </div>
+                          <Badge variant="outline" className="text-[10px] font-mono py-0 h-4 bg-background">
+                            QuickJS WASM
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="rounded border border-border/40 p-1.5 bg-background/50">
+                            <span className="text-muted-foreground block text-[10px]">超时硬限制</span>
+                            <span className="font-mono font-medium text-foreground">50 ms 熔断</span>
+                          </div>
+                          <div className="rounded border border-border/40 p-1.5 bg-background/50">
+                            <span className="text-muted-foreground block text-[10px]">内存配额</span>
+                            <span className="font-mono font-medium text-foreground">8 MB 限制</span>
+                          </div>
+                          <div className="rounded border border-border/40 p-1.5 bg-background/50">
+                            <span className="text-muted-foreground block text-[10px]">隔离机制</span>
+                            <span className="font-mono font-medium text-foreground">独立 WASM 实例</span>
+                          </div>
+                          <div className="rounded border border-border/40 p-1.5 bg-background/50">
+                            <span className="text-muted-foreground block text-[10px]">执行时机</span>
+                            <span className="font-medium text-foreground">前置签名修饰</span>
+                          </div>
+                        </div>
+
+                        {/* 参数与安全说明 */}
+                        <div className="rounded border border-border/40 p-2 bg-background/60 space-y-1 shrink-0 text-[10px]">
+                          <div className="flex items-center gap-1 text-muted-foreground font-medium">
+                            <Sparkles className="h-3 w-3 text-primary/80" />
+                            <span>可用上下文参数</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
+                            <div className="truncate"><span className="text-primary font-semibold">req</span>: 只读请求</div>
+                            <div className="truncate"><span className="text-primary font-semibold">payload</span>: 读写载荷</div>
+                            <div className="truncate"><span className="text-primary font-semibold">reject()</span>: 拒绝</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </TabsContent>
               </div>
